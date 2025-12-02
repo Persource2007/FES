@@ -1,0 +1,1067 @@
+openapi: 3.0.3
+info:
+  title: FES Stories API
+  description: |
+    API documentation for FES Stories application.
+    
+    This API provides endpoints for authentication, health checks, user management, and activity tracking.
+    
+    **Base URL:** `http://localhost:8000`
+    
+    **Authentication:** Currently not required (will be added for protected endpoints)
+    
+    **Activity Tracking:** All user activities are logged to the database. Users can only view their own activities.
+  version: 1.0.0
+  contact:
+    name: FES Stories API Support
+    email: support@fesstories.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.fesstories.com
+    description: Production server (when available)
+
+tags:
+  - name: Health
+    description: Health check and system status endpoints
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Users
+    description: User management endpoints (Super admin only)
+  - name: Activities
+    description: User activity logging and retrieval endpoints
+
+paths:
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: Health Check
+      description: |
+        Verifies the API server status and database connectivity.
+        
+        Returns:
+        - Database connection status
+        - User count in database
+        - Database name
+        - Timestamp
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Database connection successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckSuccess'
+              example:
+                success: true
+                message: "Database connection successful"
+                user_count: 2
+                database: "fes_stories"
+                timestamp: "2025-12-01T12:00:00+00:00"
+        '500':
+          description: Database connection failed or server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckError'
+              example:
+                success: false
+                message: "Database connection failed: Connection refused"
+                user_count: 0
+                database: "fes_stories"
+                timestamp: "2025-12-01T12:00:00+00:00"
+                error:
+                  code: 2002
+                  message: "Connection refused"
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User Login
+      description: |
+        Authenticates a user with email and password.
+        
+        **Note:** Currently uses simplified validation (checks if user exists).
+        Password verification is disabled for development.
+        
+        **Test Credentials:**
+        - Email: `vyom@example.com`, Password: `123`
+        - Email: `krina@example.com`, Password: `123`
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              validLogin:
+                summary: Valid login credentials
+                value:
+                  email: "vyom@example.com"
+                  password: "123"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccess'
+              example:
+                success: true
+                message: "Login successful"
+                user:
+                  id: 1
+                  email: "vyom@example.com"
+                  name: "Vyom"
+                  role:
+                    id: 1
+                    name: "Super admin"
+        '400':
+          description: Validation error - Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                success: false
+                message: "Validation failed"
+                errors:
+                  email:
+                    - "The email must be a valid email address."
+                  password:
+                    - "The password field is required."
+        '401':
+          description: Invalid credentials - User not found or password incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Invalid credentials"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred during login"
+
+  /api/users:
+    get:
+      tags:
+        - Users
+      summary: List Users
+      description: |
+        Get all users excluding Super admin users.
+        
+        **Access:** Super admin only
+        
+        Returns a list of all users with their roles (excluding Super admin).
+      operationId: listUsers
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+              example:
+                success: true
+                users:
+                  - id: 2
+                    name: "John Doe"
+                    email: "john@example.com"
+                    role_id: 2
+                    role_name: "Reader"
+                    created_at: "2025-12-01T10:00:00+00:00"
+                    updated_at: "2025-12-01T10:00:00+00:00"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while fetching users"
+
+    post:
+      tags:
+        - Users
+      summary: Create User
+      description: |
+        Create a new user with the specified role.
+        
+        **Access:** Super admin only
+        
+        **Restrictions:**
+        - Cannot create Super admin users
+        - Email must be unique
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            example:
+              name: "Jane Doe"
+              email: "jane@example.com"
+              password: "password123"
+              role_id: 2
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+              example:
+                success: true
+                message: "User created successfully"
+                user:
+                  id: 3
+                  name: "Jane Doe"
+                  email: "jane@example.com"
+                  role_id: 2
+                  role_name: "Reader"
+                  created_at: "2025-12-01T12:00:00+00:00"
+                  updated_at: "2025-12-01T12:00:00+00:00"
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                success: false
+                message: "Validation failed"
+                errors:
+                  email:
+                    - "The email has already been taken."
+                  role_id:
+                    - "The selected role id is invalid."
+        '403':
+          description: Forbidden - Cannot create Super admin user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Cannot create Super admin user"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while creating user"
+
+  /api/users/roles:
+    get:
+      tags:
+        - Users
+      summary: Get Available Roles
+      description: |
+        Get all available roles excluding Super admin.
+        
+        **Access:** Super admin only
+        
+        Returns a list of roles that can be assigned to users.
+      operationId: getRoles
+      responses:
+        '200':
+          description: Roles retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+              example:
+                success: true
+                roles:
+                  - id: 2
+                    role_name: "Reader"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while fetching roles"
+
+  /api/users/{id}/role:
+    put:
+      tags:
+        - Users
+      summary: Update User Role
+      description: |
+        Update the role of a specific user.
+        
+        **Access:** Super admin only
+        
+        **Restrictions:**
+        - Cannot modify Super admin users
+        - Cannot assign Super admin role
+      operationId: updateUserRole
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: integer
+            format: int64
+          example: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+            example:
+              role_id: 2
+      responses:
+        '200':
+          description: User role updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateRoleResponse'
+              example:
+                success: true
+                message: "User role updated successfully"
+                user:
+                  id: 2
+                  name: "John Doe"
+                  email: "john@example.com"
+                  role_id: 2
+                  role_name: "Reader"
+                  created_at: "2025-12-01T10:00:00+00:00"
+                  updated_at: "2025-12-01T12:00:00+00:00"
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                success: false
+                message: "Validation failed"
+                errors:
+                  role_id:
+                    - "The selected role id is invalid."
+        '403':
+          description: Forbidden - Cannot modify Super admin or assign Super admin role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Cannot modify Super admin user"
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "User not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while updating user role"
+
+  /api/users/{id}:
+    delete:
+      tags:
+        - Users
+      summary: Delete User
+      description: |
+        Delete a specific user.
+        
+        **Access:** Super admin only
+        
+        **Restrictions:**
+        - Cannot delete Super admin users
+      operationId: deleteUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: integer
+            format: int64
+          example: 2
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteUserResponse'
+              example:
+                success: true
+                message: "User deleted successfully"
+        '403':
+          description: Forbidden - Cannot delete Super admin user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Cannot delete Super admin user"
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "User not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while deleting user"
+
+  /api/activities:
+    get:
+      tags:
+        - Activities
+      summary: Get User Activities
+      description: |
+        Get all activities for the current user.
+        
+        **Access:** Authenticated users only
+        
+        **Security:**
+        - Users can only see their own activities
+        - Activities are filtered by user_id parameter
+        
+        Returns the last 50 activities for the specified user, ordered by most recent first.
+      operationId: getActivities
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          description: User ID to retrieve activities for
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '200':
+          description: Activities retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityListResponse'
+              example:
+                success: true
+                activities:
+                  - id: 1
+                    type: "login"
+                    message: "Logged in as Vyom (vyom@example.com)"
+                    metadata:
+                      userId: 1
+                      userName: "Vyom"
+                      userEmail: "vyom@example.com"
+                      roleName: "Super admin"
+                    timestamp: "2025-12-02T10:30:00+00:00"
+                  - id: 2
+                    type: "create"
+                    message: "Created new user: John Doe (john@example.com) with role: Reader"
+                    metadata:
+                      userEmail: "john@example.com"
+                      userName: "John Doe"
+                      roleName: "Reader"
+                    timestamp: "2025-12-02T10:25:00+00:00"
+        '400':
+          description: Validation error - Invalid user_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                success: false
+                message: "Validation failed"
+                errors:
+                  user_id:
+                    - "The user id field is required."
+                    - "The selected user id is invalid."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while fetching activities"
+
+    post:
+      tags:
+        - Activities
+      summary: Log Activity
+      description: |
+        Create a new activity log entry for the current user.
+        
+        **Access:** Authenticated users only
+        
+        **Activity Types:**
+        - `login` - User login events
+        - `create` - User creation events
+        - `edit` - User role update events
+        - `delete` - User deletion events
+        
+        The metadata field can contain additional information about the activity in JSON format.
+      operationId: logActivity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateActivityRequest'
+            example:
+              user_id: 1
+              type: "login"
+              message: "Logged in as Vyom (vyom@example.com)"
+              metadata:
+                userId: 1
+                userName: "Vyom"
+                userEmail: "vyom@example.com"
+                roleName: "Super admin"
+      responses:
+        '201':
+          description: Activity logged successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateActivityResponse'
+              example:
+                success: true
+                message: "Activity logged successfully"
+                activity:
+                  id: 1
+                  type: "login"
+                  message: "Logged in as Vyom (vyom@example.com)"
+                  metadata:
+                    userId: 1
+                    userName: "Vyom"
+                    userEmail: "vyom@example.com"
+                    roleName: "Super admin"
+                  timestamp: "2025-12-02T10:30:00+00:00"
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                success: false
+                message: "Validation failed"
+                errors:
+                  user_id:
+                    - "The user id field is required."
+                    - "The selected user id is invalid."
+                  type:
+                    - "The type field is required."
+                    - "The type may not be greater than 50 characters."
+                  message:
+                    - "The message field is required."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while logging activity"
+
+components:
+  schemas:
+    HealthCheckSuccess:
+      type: object
+      required:
+        - success
+        - message
+        - user_count
+        - database
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Database connection successful"
+        user_count:
+          type: integer
+          description: Number of users in the database
+          example: 2
+        database:
+          type: string
+          description: Database name
+          example: "fes_stories"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2025-12-01T12:00:00+00:00"
+
+    HealthCheckError:
+      type: object
+      required:
+        - success
+        - message
+        - user_count
+        - database
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Database connection failed: Connection refused"
+        user_count:
+          type: integer
+          example: 0
+        database:
+          type: string
+          example: "fes_stories"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-12-01T12:00:00+00:00"
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              example: 2002
+            message:
+              type: string
+              example: "Connection refused"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: User email address
+          example: "vyom@example.com"
+        password:
+          type: string
+          minLength: 1
+          description: User password (minimum 1 character for development)
+          example: "123"
+          writeOnly: true
+
+    LoginSuccess:
+      type: object
+      required:
+        - success
+        - message
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Login successful"
+        user:
+          $ref: '#/components/schemas/UserWithRole'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: User ID
+          example: 1
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "vyom@example.com"
+        name:
+          type: string
+          description: User full name
+          example: "Vyom"
+
+    UserWithRole:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: User ID
+          example: 1
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "vyom@example.com"
+        name:
+          type: string
+          description: User full name
+          example: "Vyom"
+        role:
+          $ref: '#/components/schemas/Role'
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Role ID
+          example: 1
+        name:
+          type: string
+          description: Role name
+          example: "Super admin"
+
+    UserListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: User ID
+          example: 2
+        name:
+          type: string
+          description: User full name
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "john@example.com"
+        role_id:
+          type: integer
+          format: int64
+          description: Role ID
+          example: 2
+        role_name:
+          type: string
+          description: Role name
+          example: "Reader"
+        created_at:
+          type: string
+          format: date-time
+          description: User creation timestamp
+          example: "2025-12-01T10:00:00+00:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: User last update timestamp
+          example: "2025-12-01T10:00:00+00:00"
+
+    UserListResponse:
+      type: object
+      required:
+        - success
+        - users
+      properties:
+        success:
+          type: boolean
+          example: true
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserListItem'
+
+    CreateUserRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+        - role_id
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: User full name
+          example: "Jane Doe"
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: User email address (must be unique)
+          example: "jane@example.com"
+        password:
+          type: string
+          minLength: 1
+          description: User password
+          example: "password123"
+          writeOnly: true
+        role_id:
+          type: integer
+          format: int64
+          description: Role ID (cannot be Super admin)
+          example: 2
+
+    CreateUserResponse:
+      type: object
+      required:
+        - success
+        - message
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "User created successfully"
+        user:
+          $ref: '#/components/schemas/UserListItem'
+
+    UpdateRoleRequest:
+      type: object
+      required:
+        - role_id
+      properties:
+        role_id:
+          type: integer
+          format: int64
+          description: New role ID (cannot be Super admin)
+          example: 2
+
+    UpdateRoleResponse:
+      type: object
+      required:
+        - success
+        - message
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "User role updated successfully"
+        user:
+          $ref: '#/components/schemas/UserListItem'
+
+    DeleteUserResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "User deleted successfully"
+
+    RoleItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Role ID
+          example: 2
+        role_name:
+          type: string
+          description: Role name
+          example: "Reader"
+
+    RoleListResponse:
+      type: object
+      required:
+        - success
+        - roles
+      properties:
+        success:
+          type: boolean
+          example: true
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleItem'
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          description: Error message
+          example: "Invalid credentials"
+
+    ValidationError:
+      type: object
+      required:
+        - success
+        - message
+        - errors
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Validation failed"
+        errors:
+          type: object
+          description: Validation errors grouped by field
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email:
+              - "The email must be a valid email address."
+            password:
+              - "The password field is required."
+
+    Activity:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Activity ID
+          example: 1
+        type:
+          type: string
+          maxLength: 50
+          description: Activity type (login, create, edit, delete)
+          example: "login"
+        message:
+          type: string
+          description: Human-readable activity message
+          example: "Logged in as Vyom (vyom@example.com)"
+        metadata:
+          type: object
+          description: Additional activity data in JSON format
+          additionalProperties: true
+          example:
+            userId: 1
+            userName: "Vyom"
+            userEmail: "vyom@example.com"
+            roleName: "Super admin"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when activity occurred
+          example: "2025-12-02T10:30:00+00:00"
+
+    ActivityListResponse:
+      type: object
+      required:
+        - success
+        - activities
+      properties:
+        success:
+          type: boolean
+          example: true
+        activities:
+          type: array
+          description: List of activities (max 50, ordered by most recent first)
+          items:
+            $ref: '#/components/schemas/Activity'
+
+    CreateActivityRequest:
+      type: object
+      required:
+        - user_id
+        - type
+        - message
+      properties:
+        user_id:
+          type: integer
+          format: int64
+          description: User ID who performed the activity
+          example: 1
+        type:
+          type: string
+          maxLength: 50
+          description: Activity type (login, create, edit, delete)
+          example: "login"
+        message:
+          type: string
+          description: Human-readable activity message
+          example: "Logged in as Vyom (vyom@example.com)"
+        metadata:
+          type: object
+          description: Optional additional activity data in JSON format
+          additionalProperties: true
+          example:
+            userId: 1
+            userName: "Vyom"
+            userEmail: "vyom@example.com"
+            roleName: "Super admin"
+
+    CreateActivityResponse:
+      type: object
+      required:
+        - success
+        - message
+        - activity
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Activity logged successfully"
+        activity:
+          $ref: '#/components/schemas/Activity'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication (to be implemented)
