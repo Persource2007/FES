@@ -54,5 +54,42 @@ class User extends Model implements AuthenticatableContract
      * @var bool
      */
     public $timestamps = true;
+
+    /**
+     * Get the role that belongs to this user.
+     */
+    public function role()
+    {
+        return $this->belongsTo(Role::class, 'role_id');
+    }
+
+    /**
+     * Check if the user has a specific permission.
+     * 
+     * @param string $permissionSlug
+     * @return bool
+     */
+    public function hasPermission(string $permissionSlug): bool
+    {
+        if (!$this->role) {
+            return false;
+        }
+
+        return $this->role->hasPermission($permissionSlug);
+    }
+
+    /**
+     * Get all permission slugs for this user.
+     * 
+     * @return array
+     */
+    public function getPermissionSlugs(): array
+    {
+        if (!$this->role) {
+            return [];
+        }
+
+        return $this->role->getPermissionSlugs();
+    }
 }
 

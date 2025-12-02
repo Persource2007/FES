@@ -4,6 +4,9 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/Users'
 import Activity from './pages/Activity'
+import Stories from './pages/Stories'
+import StoryReview from './pages/StoryReview'
+import PublicStories from './pages/PublicStories'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -11,6 +14,7 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/stories" element={<PublicStories />} />
         <Route path="/login" element={<Login />} />
         <Route
           path="/dashboard"
@@ -33,6 +37,22 @@ function App() {
           element={
             <ProtectedRoute>
               <Activity />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/stories"
+          element={
+            <ProtectedRoute>
+              <Stories />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/stories/review"
+          element={
+            <ProtectedRoute>
+              <StoryReview />
             </ProtectedRoute>
           }
         />

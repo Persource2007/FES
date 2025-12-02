@@ -4,13 +4,18 @@ info:
   description: |
     API documentation for FES Stories application.
     
-    This API provides endpoints for authentication, health checks, user management, and activity tracking.
+    This API provides endpoints for authentication, health checks, user management, activity tracking, story categories, and story management.
     
     **Base URL:** `http://localhost:8000`
     
-    **Authentication:** Currently not required (will be added for protected endpoints)
+    **Authentication:** Currently not required for public endpoints (will be added for protected endpoints)
     
     **Activity Tracking:** All user activities are logged to the database. Users can only view their own activities.
+    
+    **Story Management:** 
+    - Readers can submit stories for review
+    - Super admins can review, approve, reject, edit, and delete stories
+    - Published stories are available via public endpoint
   version: 1.0.0
   contact:
     name: FES Stories API Support
@@ -34,6 +39,10 @@ tags:
     description: User management endpoints (Super admin only)
   - name: Activities
     description: User activity logging and retrieval endpoints
+  - name: Story Categories
+    description: Story category management and reader access control endpoints (Super admin only)
+  - name: Stories
+    description: Story submission, review, and publishing endpoints
 
 paths:
   /api/health:
@@ -608,6 +617,753 @@ paths:
                 success: false
                 message: "An error occurred while logging activity"
 
+  /api/story-categories:
+    get:
+      tags:
+        - Story Categories
+      summary: Get all story categories
+      description: |
+        Retrieves all story categories. Available to all authenticated users.
+      operationId: getStoryCategories
+      responses:
+        '200':
+          description: Successfully retrieved categories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryCategoryListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Story Categories
+      summary: Create a new story category
+      description: |
+        Creates a new story category. **Super admin only.**
+      operationId: createStoryCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStoryCategoryRequest'
+            example:
+              name: "Technology"
+              description: "Stories about technology and innovation"
+              is_active: true
+      responses:
+        '201':
+          description: Category created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateStoryCategoryResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/story-categories/{id}:
+    put:
+      tags:
+        - Story Categories
+      summary: Update a story category
+      description: |
+        Updates an existing story category. **Super admin only.**
+      operationId: updateStoryCategory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Category ID
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStoryCategoryRequest'
+            example:
+              name: "Technology & Innovation"
+              description: "Updated description"
+              is_active: true
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateStoryCategoryResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Story Categories
+      summary: Delete a story category
+      description: |
+        Deletes a story category. **Super admin only.**
+        This will also remove all reader access to this category.
+      operationId: deleteStoryCategory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Category ID
+          example: 1
+      responses:
+        '200':
+          description: Category deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteStoryCategoryResponse'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/story-categories/readers:
+    get:
+      tags:
+        - Story Categories
+      summary: Get all readers with their category access
+      description: |
+        Retrieves all readers with their assigned category access. **Super admin only.**
+      operationId: getReadersWithAccess
+      responses:
+        '200':
+          description: Successfully retrieved readers with access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadersWithAccessResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/story-categories/readers/{userId}:
+    get:
+      tags:
+        - Story Categories
+      summary: Get categories accessible by a reader
+      description: |
+        Retrieves all categories that a specific reader has access to.
+      operationId: getReaderCategories
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Reader user ID
+          example: 2
+      responses:
+        '200':
+          description: Successfully retrieved reader categories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryCategoryListResponse'
+        '403':
+          description: User is not a reader
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/story-categories/readers/{userId}/access:
+    put:
+      tags:
+        - Story Categories
+      summary: Update reader access to categories
+      description: |
+        Updates which categories a reader can post stories to. **Super admin only.**
+        This replaces all existing access with the provided category IDs.
+      operationId: updateReaderAccess
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Reader user ID
+          example: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReaderAccessRequest'
+            example:
+              category_ids: [1, 2, 3]
+      responses:
+        '200':
+          description: Reader access updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateReaderAccessResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '403':
+          description: User is not a reader
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/published:
+    get:
+      tags:
+        - Stories
+      summary: Get all published stories (Public)
+      description: |
+        Retrieves all published stories. This is a public endpoint and does not require authentication.
+        
+        Returns stories ordered by publication date (newest first).
+      operationId: getPublishedStories
+      responses:
+        '200':
+          description: Successfully retrieved published stories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishedStoriesResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories:
+    post:
+      tags:
+        - Stories
+      summary: Submit a new story (Reader only)
+      description: |
+        Submits a new story for review. **Reader only.**
+        
+        **Requirements:**
+        - User must have `post_stories` permission
+        - User must have access to the selected category
+        - Category must be active
+        
+        Story will be created with status `pending` and requires super admin approval.
+      operationId: submitStory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitStoryRequest'
+            example:
+              user_id: 2
+              category_id: 1
+              title: "Saving the western ghats forest"
+              content: "A tribal community's fight to protect their ancestral woodland from commercial logging."
+      responses:
+        '201':
+          description: Story submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitStoryResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '403':
+          description: Forbidden - User doesn't have permission or category access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Category not found or inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/pending:
+    get:
+      tags:
+        - Stories
+      summary: Get pending stories for review (Super admin only)
+      description: |
+        Retrieves all stories with status `pending` awaiting super admin review.
+        
+        **Access:** Super admin only
+      operationId: getPendingStories
+      responses:
+        '200':
+          description: Successfully retrieved pending stories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingStoriesResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/pending/count:
+    get:
+      tags:
+        - Stories
+      summary: Get count of pending stories (Super admin only)
+      description: |
+        Returns the count of stories awaiting review. Used for notification badges.
+        
+        **Access:** Super admin only
+      operationId: getPendingStoriesCount
+      responses:
+        '200':
+          description: Successfully retrieved pending count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingCountResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/{id}/approve:
+    post:
+      tags:
+        - Stories
+      summary: Approve and publish a story (Super admin only)
+      description: |
+        Approves a pending story and publishes it. Changes status from `pending` to `published`.
+        
+        **Access:** Super admin only
+        
+        **Requirements:**
+        - Story must have status `pending`
+        - Admin user must have `manage_story_categories` permission
+      operationId: approveStory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Story ID
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveStoryRequest'
+            example:
+              admin_user_id: 1
+      responses:
+        '200':
+          description: Story approved and published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveStoryResponse'
+        '400':
+          description: Story is not pending approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User doesn't have permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/{id}/reject:
+    post:
+      tags:
+        - Stories
+      summary: Reject a story (Super admin only)
+      description: |
+        Rejects a pending story. Changes status from `pending` to `rejected`.
+        
+        **Access:** Super admin only
+        
+        **Requirements:**
+        - Story must have status `pending`
+        - Admin user must have `manage_story_categories` permission
+      operationId: rejectStory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Story ID
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectStoryRequest'
+            example:
+              admin_user_id: 1
+              rejection_reason: "Content does not meet our editorial guidelines"
+      responses:
+        '200':
+          description: Story rejected successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RejectStoryResponse'
+        '400':
+          description: Story is not pending approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User doesn't have permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/reader/{userId}:
+    get:
+      tags:
+        - Stories
+      summary: Get stories for a reader (their own stories)
+      description: |
+        Retrieves all stories submitted by a specific reader.
+        
+        Returns stories with all statuses (pending, published, rejected) for the reader.
+      operationId: getReaderStories
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Reader user ID
+          example: 2
+      responses:
+        '200':
+          description: Successfully retrieved reader stories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReaderStoriesResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/approved/{adminId}:
+    get:
+      tags:
+        - Stories
+      summary: Get stories approved by an admin (Super admin only)
+      description: |
+        Retrieves all published stories that were approved by a specific super admin.
+        
+        **Access:** Super admin only
+      operationId: getApprovedStories
+      parameters:
+        - name: adminId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Admin user ID
+          example: 1
+      responses:
+        '200':
+          description: Successfully retrieved approved stories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovedStoriesResponse'
+        '403':
+          description: Forbidden - User doesn't have permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Admin user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stories/{id}:
+    put:
+      tags:
+        - Stories
+      summary: Update a published story (Super admin only)
+      description: |
+        Updates a published story. Only published stories can be edited.
+        
+        **Access:** Super admin only
+        
+        **Requirements:**
+        - Story must have status `published`
+        - Admin user must have `manage_story_categories` permission
+      operationId: updateStory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Story ID
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStoryRequest'
+            example:
+              admin_user_id: 1
+              title: "Updated story title"
+              content: "Updated story content"
+              category_id: 1
+      responses:
+        '200':
+          description: Story updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateStoryResponse'
+        '400':
+          description: Validation error or story is not published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '403':
+          description: Forbidden - User doesn't have permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Stories
+      summary: Delete a published story (Super admin only)
+      description: |
+        Deletes a published story. Only published stories can be deleted.
+        
+        **Access:** Super admin only
+        
+        **Requirements:**
+        - Story must have status `published`
+        - Admin user must have `manage_story_categories` permission
+      operationId: deleteStory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Story ID
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - admin_user_id
+              properties:
+                admin_user_id:
+                  type: integer
+                  format: int64
+                  description: Admin user ID
+                  example: 1
+      responses:
+        '200':
+          description: Story deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteStoryResponse'
+        '400':
+          description: Story is not published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User doesn't have permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     HealthCheckSuccess:
@@ -965,6 +1721,182 @@ components:
             password:
               - "The password field is required."
 
+    StoryCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Category ID
+          example: 1
+        name:
+          type: string
+          maxLength: 255
+          description: Category name (unique)
+          example: "Technology"
+        description:
+          type: string
+          nullable: true
+          description: Category description
+          example: "Stories about technology and innovation"
+        is_active:
+          type: boolean
+          description: Whether the category is active
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when category was created
+          example: "2025-12-02T10:30:00+00:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when category was last updated
+          example: "2025-12-02T10:30:00+00:00"
+
+    StoryCategoryListResponse:
+      type: object
+      required:
+        - success
+        - categories
+      properties:
+        success:
+          type: boolean
+          example: true
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryCategory'
+
+    CreateStoryCategoryRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Category name (must be unique)
+          example: "Technology"
+        description:
+          type: string
+          nullable: true
+          description: Category description
+          example: "Stories about technology and innovation"
+        is_active:
+          type: boolean
+          description: Whether the category is active (default: true)
+          example: true
+
+    CreateStoryCategoryResponse:
+      type: object
+      required:
+        - success
+        - message
+        - category
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Story category created successfully"
+        category:
+          $ref: '#/components/schemas/StoryCategory'
+
+    DeleteStoryCategoryResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Story category deleted successfully"
+
+    ReaderWithCategories:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Reader user ID
+          example: 2
+        name:
+          type: string
+          description: Reader name
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          description: Reader email
+          example: "john@example.com"
+        categories:
+          type: array
+          description: Categories accessible by this reader
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                format: int64
+                example: 1
+              name:
+                type: string
+                example: "Technology"
+              description:
+                type: string
+                nullable: true
+                example: "Stories about technology"
+
+    ReadersWithAccessResponse:
+      type: object
+      required:
+        - success
+        - readers
+      properties:
+        success:
+          type: boolean
+          example: true
+        readers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReaderWithCategories'
+
+    UpdateReaderAccessRequest:
+      type: object
+      required:
+        - category_ids
+      properties:
+        category_ids:
+          type: array
+          description: Array of category IDs the reader should have access to
+          items:
+            type: integer
+            format: int64
+          example: [1, 2, 3]
+
+    UpdateReaderAccessResponse:
+      type: object
+      required:
+        - success
+        - message
+        - categories
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Reader access updated successfully"
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryCategory'
+
     Activity:
       type: object
       properties:
@@ -1058,6 +1990,304 @@ components:
           example: "Activity logged successfully"
         activity:
           $ref: '#/components/schemas/Activity'
+
+    Story:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Story ID
+          example: 1
+        title:
+          type: string
+          maxLength: 255
+          description: Story title
+          example: "Saving the western ghats forest"
+        content:
+          type: string
+          description: Story content
+          example: "A tribal community's fight to protect their ancestral woodland from commercial logging."
+        status:
+          type: string
+          enum: [draft, pending, approved, published, rejected]
+          description: Story status
+          example: "published"
+        category_id:
+          type: integer
+          format: int64
+          description: Category ID
+          example: 1
+        category_name:
+          type: string
+          description: Category name
+          example: "Environment"
+        author_name:
+          type: string
+          description: Author name
+          example: "John Doe"
+        author_email:
+          type: string
+          format: email
+          description: Author email
+          example: "john@example.com"
+        created_at:
+          type: string
+          format: date-time
+          description: Story creation timestamp
+          example: "2025-12-02T10:30:00+00:00"
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Publication timestamp
+          example: "2025-12-02T11:00:00+00:00"
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Approval timestamp
+          example: "2025-12-02T11:00:00+00:00"
+        rejection_reason:
+          type: string
+          nullable: true
+          description: Rejection reason (if rejected)
+          example: "Content does not meet editorial guidelines"
+
+    PublishedStoriesResponse:
+      type: object
+      required:
+        - success
+        - stories
+        - count
+      properties:
+        success:
+          type: boolean
+          example: true
+        stories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Story'
+        count:
+          type: integer
+          description: Total number of published stories
+          example: 10
+
+    SubmitStoryRequest:
+      type: object
+      required:
+        - user_id
+        - category_id
+        - title
+        - content
+      properties:
+        user_id:
+          type: integer
+          format: int64
+          description: User ID submitting the story
+          example: 2
+        category_id:
+          type: integer
+          format: int64
+          description: Category ID
+          example: 1
+        title:
+          type: string
+          maxLength: 255
+          description: Story title
+          example: "Saving the western ghats forest"
+        content:
+          type: string
+          description: Story content
+          example: "A tribal community's fight to protect their ancestral woodland from commercial logging."
+
+    SubmitStoryResponse:
+      type: object
+      required:
+        - success
+        - message
+        - story
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Story submitted successfully. It will be reviewed by an administrator."
+        story:
+          $ref: '#/components/schemas/Story'
+
+    PendingStoriesResponse:
+      type: object
+      required:
+        - success
+        - stories
+        - count
+      properties:
+        success:
+          type: boolean
+          example: true
+        stories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Story'
+        count:
+          type: integer
+          description: Total number of pending stories
+          example: 5
+
+    PendingCountResponse:
+      type: object
+      required:
+        - success
+        - count
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of pending stories
+          example: 5
+
+    ApproveStoryRequest:
+      type: object
+      required:
+        - admin_user_id
+      properties:
+        admin_user_id:
+          type: integer
+          format: int64
+          description: Admin user ID approving the story
+          example: 1
+
+    ApproveStoryResponse:
+      type: object
+      required:
+        - success
+        - message
+        - story
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Story approved and published successfully"
+        story:
+          $ref: '#/components/schemas/Story'
+
+    RejectStoryRequest:
+      type: object
+      required:
+        - admin_user_id
+      properties:
+        admin_user_id:
+          type: integer
+          format: int64
+          description: Admin user ID rejecting the story
+          example: 1
+        rejection_reason:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Optional reason for rejection
+          example: "Content does not meet our editorial guidelines"
+
+    RejectStoryResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Story rejected successfully"
+
+    ReaderStoriesResponse:
+      type: object
+      required:
+        - success
+        - stories
+      properties:
+        success:
+          type: boolean
+          example: true
+        stories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Story'
+
+    ApprovedStoriesResponse:
+      type: object
+      required:
+        - success
+        - stories
+      properties:
+        success:
+          type: boolean
+          example: true
+        stories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Story'
+
+    UpdateStoryRequest:
+      type: object
+      required:
+        - admin_user_id
+      properties:
+        admin_user_id:
+          type: integer
+          format: int64
+          description: Admin user ID updating the story
+          example: 1
+        title:
+          type: string
+          maxLength: 255
+          description: Updated story title (optional)
+          example: "Updated story title"
+        content:
+          type: string
+          description: Updated story content (optional)
+          example: "Updated story content"
+        category_id:
+          type: integer
+          format: int64
+          description: Updated category ID (optional)
+          example: 1
+
+    UpdateStoryResponse:
+      type: object
+      required:
+        - success
+        - message
+        - story
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Story updated successfully"
+        story:
+          $ref: '#/components/schemas/Story'
+
+    DeleteStoryResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Story deleted successfully"
 
   securitySchemes:
     BearerAuth:

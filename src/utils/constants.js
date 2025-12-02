@@ -24,14 +24,29 @@ export const API_ENDPOINTS = {
     LIST: '/api/activities',
     CREATE: '/api/activities',
   },
-  // Add more endpoint categories as needed
-  // STORIES: {
-  //   LIST: '/stories',
-  //   DETAIL: (id) => `/stories/${id}`,
-  //   CREATE: '/stories',
-  //   UPDATE: (id) => `/stories/${id}`,
-  //   DELETE: (id) => `/stories/${id}`,
-  // },
+  // Story category endpoints
+  STORY_CATEGORIES: {
+    LIST: '/api/story-categories',
+    CREATE: '/api/story-categories',
+    UPDATE: (id) => `/api/story-categories/${id}`,
+    DELETE: (id) => `/api/story-categories/${id}`,
+    READERS: '/api/story-categories/readers',
+    READER_CATEGORIES: (userId) => `/api/story-categories/readers/${userId}`,
+    UPDATE_READER_ACCESS: (userId) => `/api/story-categories/readers/${userId}/access`,
+  },
+  // Story endpoints
+  STORIES: {
+    PUBLISHED: '/api/stories/published', // Public endpoint
+    CREATE: '/api/stories',
+    PENDING: '/api/stories/pending',
+    PENDING_COUNT: '/api/stories/pending/count',
+    APPROVE: (id) => `/api/stories/${id}/approve`,
+    REJECT: (id) => `/api/stories/${id}/reject`,
+    READER_STORIES: (userId) => `/api/stories/reader/${userId}`,
+    APPROVED_STORIES: (adminId) => `/api/stories/approved/${adminId}`,
+    UPDATE: (id) => `/api/stories/${id}`,
+    DELETE: (id) => `/api/stories/${id}`,
+  },
 }
 
 // HTTP Methods

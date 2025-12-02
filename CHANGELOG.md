@@ -197,5 +197,186 @@ When making changes to the project:
 
 ---
 
+### December 2, 2025
+
+#### Story Management System
+
+**File: `backend/create_stories_table.sql`** (NEW)
+- Created stories table - PostgreSQL table for story submissions with status tracking
+- Table structure: id, user_id, category_id, title, content, status, approved_by, approved_at, published_at, rejection_reason, created_at, updated_at
+- Status values: draft, pending, approved, published, rejected
+- Foreign keys to users and story_categories tables
+
+**File: `backend/app/Models/Story.php`** (NEW)
+- Created Story model - Eloquent model with relationships to User, StoryCategory, and approver
+- Mass assignable fields and datetime casting for timestamps
+
+**File: `backend/app/Http/Controllers/StoryController.php`** (NEW)
+- Created StoryController - Handles all story-related operations
+- `getPublishedStories()` - Public endpoint to get all published stories
+- `store()` - Reader submits story (status: pending)
+- `getPendingStories()` - Super admin gets pending stories for review
+- `getPendingCount()` - Returns count of pending stories for notifications
+- `approve()` - Super admin approves and publishes story
+- `reject()` - Super admin rejects story with optional reason
+- `getReaderStories()` - Gets all stories for a specific reader
+- `getApprovedStories()` - Gets stories approved by a specific admin
+- `update()` - Super admin edits published story
+- `destroy()` - Super admin deletes published story
+
+**File: `backend/routes/api.php`**
+- Added story routes - 10 new endpoints for story management
+- Public endpoint: GET /api/stories/published
+- Reader endpoints: POST /api/stories, GET /api/stories/reader/{userId}
+- Admin endpoints: GET /api/stories/pending, GET /api/stories/pending/count, POST /api/stories/{id}/approve, POST /api/stories/{id}/reject, GET /api/stories/approved/{adminId}, PUT /api/stories/{id}, DELETE /api/stories/{id}
+
+**File: `src/pages/Stories.jsx`**
+- Enhanced with story submission for readers - Added story submission form with category selection
+- Added "My Stories" tab for readers - Displays reader's own stories with status badges (pending, published, rejected)
+- Added "Approved Stories" tab for admins - Shows stories approved by current admin with edit/delete functionality
+- Added story edit modal - Super admin can edit title, content, and category of published stories
+- Added story delete confirmation - Super admin can delete published stories with confirmation
+- Status badges with color coding - Visual indicators for story status
+- Auto-refresh after actions - Stories list refreshes after submit, edit, or delete
+
+**File: `src/pages/StoryReview.jsx`** (NEW)
+- Created Story Review page - Super admin interface for reviewing pending stories
+- Displays pending stories with author, category, and submission date
+- Approve & Publish functionality - One-click approval that publishes the story
+- Reject functionality - Reject stories with optional rejection reason
+- Auto-refreshes every 10 seconds - Keeps pending stories list up to date
+- Red notification banner - Prominent display of pending story count
+
+**File: `src/pages/PublicStories.jsx`** (NEW)
+- Created public-facing Stories page - Displays all published stories at `/stories`
+- Responsive grid layout - 3-column grid on desktop, responsive on mobile
+- Story cards with preview - Shows title, category, author, date, and content excerpt
+- Story detail modal - Full story content displayed in modal on "Read more" click
+- Newsletter subscription section - Email subscription form
+- Footer with navigation - Links to other pages and social media
+
+**File: `src/components/Sidebar.jsx`**
+- Added dropdown submenu for Stories - "Story Review" is now a submenu under "Stories"
+- Notification badge for pending stories - Red badge showing count of pending stories
+- Badge updates every 15 seconds - Real-time notification count
+- Auto-expands when on review page - Menu automatically expands when viewing story review
+- Fixed navigation - Clicking "Stories" now navigates to categories page, chevron toggles dropdown
+
+**File: `src/utils/constants.js`**
+- Added STORIES endpoints - All story-related API endpoint constants
+- Added PUBLISHED endpoint - Public endpoint for published stories
+- Added story CRUD endpoints - Create, read, update, delete, approve, reject endpoints
+
+**File: `src/App.jsx`**
+- Added public stories route - `/stories` route for public-facing stories page
+- Added story review route - `/dashboard/stories/review` for super admin story review
+
+#### Permission System Refactoring
+
+**File: `backend/create_permissions_system.sql`** (NEW)
+- Created permissions system - Flexible permission-based access control
+- Created permissions table - Stores permission slugs and descriptions
+- Created role_permissions junction table - Many-to-many relationship between roles and permissions
+- Default permissions inserted - manage_users, manage_story_categories, manage_reader_access, post_stories, view_stories, view_activity, manage_settings
+- Dynamic role permission assignment - Automatically assigns permissions to Super admin and Reader roles
+
+**File: `backend/app/Helpers/PermissionHelper.php`** (NEW)
+- Created PermissionHelper - Backend utility for permission checks
+- `getUserPermissions()` - Retrieves all permissions for a user
+- `hasPermission()` - Checks if user has specific permission
+- Specific permission check methods - canManageUsers, canManageStoryCategories, canPostStories, etc.
+
+**File: `backend/app/Http/Controllers/AuthController.php`**
+- Updated login response - Includes permissions array in user object
+- Fallback for permissions - Handles cases where permissions tables don't exist yet
+
+**File: `src/utils/permissions.js`** (NEW)
+- Created frontend permission utilities - Permission checking functions for React components
+- `hasPermission()` - Check if user has specific permission
+- `hasAnyPermission()` - Check if user has any of the specified permissions
+- `hasAllPermissions()` - Check if user has all specified permissions
+- Specific permission checks - canManageUsers, canManageStoryCategories, canPostStories, etc.
+
+**File: `src/pages/Dashboard.jsx`**
+- Updated to use permission checks - Replaced hardcoded role checks with permission-based checks
+
+**File: `src/pages/Users.jsx`**
+- Updated to use permission checks - Uses canManageUsers permission check
+
+**File: `src/pages/Stories.jsx`**
+- Updated to use permission checks - Uses permission-based checks for category management and story posting
+
+**File: `src/components/Sidebar.jsx`**
+- Updated to use permission checks - Menu items shown based on user permissions
+- Notification badge only for users with manage_story_categories permission
+
+#### Story Categories System
+
+**File: `backend/create_story_categories_tables.sql`** (NEW)
+- Created story_categories table - Stores story categories with name, description, and active status
+- Created reader_category_access junction table - Many-to-many relationship for reader category access
+- Foreign keys and indexes for performance
+
+**File: `backend/app/Models/StoryCategory.php`** (NEW)
+- Created StoryCategory model - Eloquent model with readers relationship
+
+**File: `backend/app/Models/ReaderCategoryAccess.php`** (NEW)
+- Created ReaderCategoryAccess model - Junction table model for reader category access
+
+**File: `backend/app/Http/Controllers/StoryCategoryController.php`** (NEW)
+- Created StoryCategoryController - Handles category management and reader access
+- `index()` - Lists all categories
+- `store()` - Creates new category (Super admin only)
+- `update()` - Updates category (Super admin only)
+- `destroy()` - Deletes category (Super admin only)
+- `getReadersWithAccess()` - Lists readers with their category access (excludes Super admins)
+- `getReaderCategories()` - Gets categories accessible by a reader
+- `updateReaderAccess()` - Updates reader's category access (Super admin only)
+- Fixed validation - Allows empty category_ids array to remove all access
+- Fixed date function - Replaced `now()` with `date('Y-m-d H:i:s')` for Lumen compatibility
+
+**File: `backend/routes/api.php`**
+- Added story category routes - 7 endpoints for category management and reader access
+
+**File: `src/pages/Stories.jsx`**
+- Added category management tabs - "Categories" and "Reader Access" tabs for super admin
+- Category CRUD operations - Create, read, update, delete categories
+- Reader access management - Assign/remove category access for readers
+- Category selection for story submission - Readers can only select categories they have access to
+
+#### Swagger Documentation
+
+**File: `backend/api-docs/swagger.yaml`**
+- Added Stories tag - New tag for story-related endpoints
+- Added 10 story endpoints - Complete documentation for all story operations
+- Added story schemas - Story, PublishedStoriesResponse, SubmitStoryRequest/Response, PendingStoriesResponse, etc.
+- Updated API description - Added story management information
+- All endpoints documented - Request/response schemas, parameters, examples, and error responses
+- Verified no duplicates - All 21 API endpoints from routes/api.php are documented
+
+#### Issues Resolved
+
+**Story Management:**
+- ✅ Story submission validation - Fixed category_id type conversion (string to integer)
+- ✅ Story category page navigation - Fixed sidebar dropdown preventing navigation to categories page
+- ✅ Story review dropdown - Made "Story Review" a submenu under "Stories" with proper navigation
+- ✅ Reader stories display - Fixed white page issue by moving hooks to top level (React Rules of Hooks)
+- ✅ Story edit/delete permissions - Only published stories can be edited/deleted by super admin
+- ✅ Category access validation - Fixed validation to allow empty arrays for removing all access
+- ✅ Date function compatibility - Replaced `now()` with `date('Y-m-d H:i:s')` for Lumen
+
+**Permission System:**
+- ✅ Permission checks in frontend - Added defensive checks for users logged in before permissions system
+- ✅ Super admin category access - Super admins cannot be given category access (excluded from reader lists)
+- ✅ Permission-based menu items - Sidebar and pages use permission checks instead of hardcoded role names
+
+**UI/UX:**
+- ✅ Story status badges - Color-coded badges for pending, published, rejected statuses
+- ✅ Notification badges - Real-time pending story count in sidebar
+- ✅ Story detail modal - Full story content in modal for public stories page
+- ✅ Responsive design - All new pages are fully responsive
+
+---
+
 **Last Updated:** December 2, 2025
 

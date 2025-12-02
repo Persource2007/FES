@@ -37,5 +37,30 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->get('/', 'ActivityController@index');
         $router->post('/', 'ActivityController@store');
     });
+
+    // Story category routes (super admin only)
+    $router->group(['prefix' => 'story-categories'], function () use ($router) {
+        $router->get('/', 'StoryCategoryController@index');
+        $router->post('/', 'StoryCategoryController@store');
+        $router->put('/{id}', 'StoryCategoryController@update');
+        $router->delete('/{id}', 'StoryCategoryController@destroy');
+        $router->get('/readers', 'StoryCategoryController@getReadersWithAccess');
+        $router->get('/readers/{userId}', 'StoryCategoryController@getReaderCategories');
+        $router->put('/readers/{userId}/access', 'StoryCategoryController@updateReaderAccess');
+    });
+
+    // Story routes
+    $router->group(['prefix' => 'stories'], function () use ($router) {
+        $router->get('/published', 'StoryController@getPublishedStories'); // Public endpoint
+        $router->post('/', 'StoryController@store');
+        $router->get('/pending', 'StoryController@getPendingStories');
+        $router->get('/pending/count', 'StoryController@getPendingCount');
+        $router->post('/{id}/approve', 'StoryController@approve');
+        $router->post('/{id}/reject', 'StoryController@reject');
+        $router->get('/reader/{userId}', 'StoryController@getReaderStories');
+        $router->get('/approved/{adminId}', 'StoryController@getApprovedStories');
+        $router->put('/{id}', 'StoryController@update');
+        $router->delete('/{id}', 'StoryController@destroy');
+    });
 });
 

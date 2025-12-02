@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FaChartBar } from 'react-icons/fa'
 import Sidebar from '../components/Sidebar'
+import {
+  canManageUsers,
+  canManageStoryCategories,
+  canPostStories,
+} from '../utils/permissions'
 
 function Dashboard() {
   const navigate = useNavigate()
@@ -36,8 +41,9 @@ function Dashboard() {
     localStorage.removeItem('user')
   }
 
-  const isSuperAdmin = user?.role?.name === 'Super admin'
-  const isReader = user?.role?.name === 'Reader'
+  const canManageUsersPermission = canManageUsers(user)
+  const canManageCategoriesPermission = canManageStoryCategories(user)
+  const canPostStoriesPermission = canPostStories(user)
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -69,10 +75,10 @@ function Dashboard() {
               </div>
             </div>
             <p className="text-gray-600">
-              {isSuperAdmin
-                ? 'You have full administrative access to manage content, users, and system settings.'
-                : isReader
-                ? 'You have read-only access to view content and publications.'
+              {canManageUsersPermission && canManageCategoriesPermission
+                ? 'You have full administrative access to manage stories, users, and system settings.'
+                : canPostStoriesPermission
+                ? 'You can post stories to categories you have access to.'
                 : 'This is your dashboard page. You can add your content here.'}
             </p>
           </div>

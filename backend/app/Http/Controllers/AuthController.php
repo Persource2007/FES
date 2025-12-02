@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\PermissionHelper;
 use App\Http\Requests\LoginRequest;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -74,7 +75,21 @@ class AuthController extends Controller
                 }
             }
 
-            // Return success response with user data including role
+            // Get user permissions (with error handling in case permissions table doesn't exist yet)
+            $permissions = [];
+            try {
+                $permissions = PermissionHelper::getUserPermissions($user);
+            } catch (\Exception $e) {
+                // If permissions table doesn't exist yet, return empty array
+                // This allows the app to work before permissions are set up
+                Log::warning('Could not fetch user permissions', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $permissions = [];
+            }
+
+            // Return success response with user data including role and permissions
             return $this->successResponse([
                 'message' => 'Login successful',
                 'user' => [
@@ -82,6 +97,7 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'name' => $user->name,
                     'role' => $role,
+                    'permissions' => $permissions,
                 ],
             ]);
         } catch (ValidationException $e) {

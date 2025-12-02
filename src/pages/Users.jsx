@@ -14,6 +14,7 @@ import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
+import { canManageUsers } from '../utils/permissions'
 
 function Users() {
   const navigate = useNavigate()
@@ -64,9 +65,19 @@ function Users() {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
 
-      // Check if user is super admin
-      if (parsedUser.role?.name !== 'Super admin') {
-        toast.error('Access denied. Super admin access required.')
+      // Debug: Log user permissions
+      console.log('User object:', parsedUser)
+      console.log('User permissions:', parsedUser.permissions)
+      console.log('Can manage users?', canManageUsers(parsedUser))
+
+      // Check if user can manage users
+      if (!canManageUsers(parsedUser)) {
+        // Check if permissions array exists
+        if (!parsedUser.permissions || !Array.isArray(parsedUser.permissions)) {
+          toast.error('Permissions not loaded. Please log out and log back in, or run the permissions SQL script.')
+        } else {
+          toast.error('Access denied. You do not have permission to manage users.')
+        }
         navigate('/dashboard')
         return
       }
@@ -78,7 +89,7 @@ function Users() {
 
   // Fetch data on mount
   useEffect(() => {
-    if (user?.role?.name === 'Super admin') {
+    if (canManageUsers(user)) {
       console.log('Fetching users and roles...')
       fetchUsers().catch((err) => {
         console.error('Error fetching users:', err)
