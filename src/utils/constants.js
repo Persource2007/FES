@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
     CREATE: '/api/users',
     ROLES: '/api/users/roles',
     UPDATE_ROLE: (id) => `/api/users/${id}/role`,
+    TOGGLE_STATUS: (id) => `/api/users/${id}/toggle-status`,
     DELETE: (id) => `/api/users/${id}`,
   },
   // Activity endpoints
@@ -24,11 +25,16 @@ export const API_ENDPOINTS = {
     LIST: '/api/activities',
     CREATE: '/api/activities',
   },
+  // Region endpoints
+  REGIONS: {
+    LIST: '/api/regions',
+  },
   // Story category endpoints
   STORY_CATEGORIES: {
     LIST: '/api/story-categories',
     CREATE: '/api/story-categories',
     UPDATE: (id) => `/api/story-categories/${id}`,
+    TOGGLE_STATUS: (id) => `/api/story-categories/${id}/toggle-status`,
     DELETE: (id) => `/api/story-categories/${id}`,
     READERS: '/api/story-categories/readers',
     READER_CATEGORIES: (userId) => `/api/story-categories/readers/${userId}`,
@@ -44,6 +50,7 @@ export const API_ENDPOINTS = {
     REJECT: (id) => `/api/stories/${id}/reject`,
     READER_STORIES: (userId) => `/api/stories/reader/${userId}`,
     APPROVED_STORIES: (adminId) => `/api/stories/approved/${adminId}`,
+    ALL_APPROVED_STORIES: '/api/stories/approved/all',
     UPDATE: (id) => `/api/stories/${id}`,
     DELETE: (id) => `/api/stories/${id}`,
   },

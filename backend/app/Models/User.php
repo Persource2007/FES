@@ -26,6 +26,8 @@ class User extends Model implements AuthenticatableContract
         'email',
         'password',
         'role_id',
+        'region_id',
+        'is_active',
     ];
 
     /**
@@ -46,6 +48,7 @@ class User extends Model implements AuthenticatableContract
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'is_active' => 'boolean',
     ];
 
     /**
@@ -61,6 +64,14 @@ class User extends Model implements AuthenticatableContract
     public function role()
     {
         return $this->belongsTo(Role::class, 'role_id');
+    }
+
+    /**
+     * Get the region that belongs to this user.
+     */
+    public function region()
+    {
+        return $this->belongsTo(Region::class, 'region_id');
     }
 
     /**

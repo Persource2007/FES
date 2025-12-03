@@ -15,6 +15,7 @@ import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
 import { canManageUsers } from '../utils/permissions'
+import { formatDateSimple } from '../utils/dateFormat'
 
 function Users() {
   const navigate = useNavigate()
@@ -23,6 +24,8 @@ function Users() {
   const [editingUser, setEditingUser] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [updatingRole, setUpdatingRole] = useState(false)
+  const [updatingUser, setUpdatingUser] = useState(false)
+  const [togglingStatus, setTogglingStatus] = useState(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -30,6 +33,7 @@ function Users() {
     email: '',
     password: '',
     role_id: '',
+    region_id: '',
   })
 
   // Fetch users
@@ -47,6 +51,14 @@ function Users() {
     error: rolesError,
     execute: fetchRoles,
   } = useApi(API_ENDPOINTS.USERS.ROLES, { immediate: false })
+
+  // Fetch regions
+  const {
+    data: regionsData,
+    loading: regionsLoading,
+    error: regionsError,
+    execute: fetchRegions,
+  } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
 
   // Mutations
   const { execute: createUser, loading: creating } = useMutation(
@@ -99,6 +111,10 @@ function Users() {
         console.error('Error fetching roles:', err)
         toast.error('Failed to load roles. Please check if backend is running.')
       })
+      fetchRegions().catch((err) => {
+        console.error('Error fetching regions:', err)
+        toast.error('Failed to load regions. Please check if backend is running.')
+      })
     }
   }, [user])
 
@@ -125,7 +141,7 @@ function Users() {
       }).catch(err => console.error('Failed to log create activity:', err))
       
       setShowAddModal(false)
-      setFormData({ name: '', email: '', password: '', role_id: '' })
+      setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
       fetchUsers()
     } catch (error) {
       const errorMessage =
@@ -136,50 +152,136 @@ function Users() {
     }
   }
 
-  const handleEditRole = async (userId, newRoleId) => {
-    setUpdatingRole(true)
+  const handleEditUser = (userItem) => {
+    setEditingUser(userItem)
+    setFormData({
+      name: userItem.name,
+      email: userItem.email,
+      password: '', // Don't pre-fill password
+      role_id: userItem.role_id,
+      region_id: userItem.region_id || '',
+    })
+    setShowAddModal(true)
+  }
+
+  const handleToggleUserStatus = async (userId, currentStatus) => {
+    setTogglingStatus(userId)
+    
+    // Optimistically update the UI
+    const user = users.find(u => u.id === userId)
+    const originalStatus = user?.is_active
+    const newStatus = !currentStatus
+    
+    // Update local state immediately
+    setUsers(prevUsers =>
+      prevUsers.map(u =>
+        u.id === userId ? { ...u, is_active: newStatus } : u
+      )
+    )
+
     try {
-      console.log('Updating role for user:', userId, 'to role:', newRoleId)
-      
+      const response = await apiClient.patch(
+        API_ENDPOINTS.USERS.TOGGLE_STATUS(userId)
+      )
+      if (response.data.success) {
+        toast.success(`User ${newStatus ? 'activated' : 'deactivated'} successfully`)
+        fetchUsers() // Refresh to get server state
+        if (user) {
+          addActivity('edit', `${newStatus ? 'Activated' : 'Deactivated'} user: ${user.name} (${user.email})`)
+        }
+      } else {
+        // Revert on failure
+        setUsers(prevUsers =>
+          prevUsers.map(u =>
+            u.id === userId ? { ...u, is_active: originalStatus } : u
+          )
+        )
+      }
+    } catch (error) {
+      console.error('Error toggling user status:', error)
+      // Revert on error
+      setUsers(prevUsers =>
+        prevUsers.map(u =>
+          u.id === userId ? { ...u, is_active: originalStatus } : u
+        )
+      )
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update user status'
+      toast.error(errorMessage)
+    } finally {
+      setTogglingStatus(null)
+    }
+  }
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault()
+    if (!editingUser) return
+
+    setUpdatingUser(true)
+    try {
       // Get user info before update for activity log
-      const userToUpdate = users.find(u => u.id === userId)
+      const userToUpdate = users.find(u => u.id === editingUser.id)
       const oldRoleName = userToUpdate?.role_name || 'Unknown'
-      const newRoleName = roles.find(r => r.id === newRoleId)?.role_name || 'Unknown'
-      
+      const newRoleName = roles.find(r => r.id === parseInt(formData.role_id))?.role_name || 'Unknown'
+      const oldRegionName = userToUpdate?.region_name || 'None'
+      const newRegionName = regions.find(r => r.id === parseInt(formData.region_id))?.name || 'None'
+
       // Use apiClient directly for dynamic URL
       const response = await apiClient({
         method: 'PUT',
-        url: API_ENDPOINTS.USERS.UPDATE_ROLE(userId),
-        data: { role_id: newRoleId },
+        url: API_ENDPOINTS.USERS.UPDATE_ROLE(editingUser.id),
+        data: { 
+          role_id: parseInt(formData.role_id),
+          region_id: formData.region_id ? parseInt(formData.region_id) : null,
+        },
       })
-      
-      console.log('Role update response:', response.data)
-      
-      toast.success('User role updated successfully')
-      
+
+      console.log('User update response:', response.data)
+
+      toast.success('User updated successfully')
+
       // Log activity (fire-and-forget, don't block on error)
       if (userToUpdate) {
-        addActivity('edit', `Updated role for ${userToUpdate.name} (${userToUpdate.email}): ${oldRoleName} → ${newRoleName}`, {
-          userId: userId,
-          userName: userToUpdate.name,
-          userEmail: userToUpdate.email,
+        const changes = []
+        if (oldRoleName !== newRoleName) {
+          changes.push(`Role: ${oldRoleName} → ${newRoleName}`)
+        }
+        if (oldRegionName !== newRegionName) {
+          changes.push(`Region: ${oldRegionName} → ${newRegionName}`)
+        }
+        if (userToUpdate.name !== formData.name) {
+          changes.push(`Name: ${userToUpdate.name} → ${formData.name}`)
+        }
+        if (userToUpdate.email !== formData.email) {
+          changes.push(`Email: ${userToUpdate.email} → ${formData.email}`)
+        }
+        addActivity('edit', `Updated ${userToUpdate.name} (${userToUpdate.email}): ${changes.join(', ')}`, {
+          userId: editingUser.id,
+          userName: formData.name,
+          userEmail: formData.email,
           oldRole: oldRoleName,
           newRole: newRoleName,
+          oldRegion: oldRegionName,
+          newRegion: newRegionName,
         }).catch(err => console.error('Failed to log edit activity:', err))
       }
-      
+
       setEditingUser(null)
+      setShowAddModal(false)
+      setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
       fetchUsers()
     } catch (error) {
-      console.error('Error updating role:', error)
+      console.error('Error updating user:', error)
       console.error('Error response:', error.response)
       const errorMessage =
         error.response?.data?.message ||
         error.message ||
-        'Failed to update user role'
+        'Failed to update user'
       toast.error(errorMessage)
     } finally {
-      setUpdatingRole(false)
+      setUpdatingUser(false)
     }
   }
 
@@ -228,8 +330,16 @@ function Users() {
     }
   }
 
-  const users = usersData?.users || []
+  const [users, setUsers] = useState([])
   const roles = rolesData?.roles || []
+  const regions = regionsData?.regions || []
+
+  // Update users when data changes
+  useEffect(() => {
+    if (usersData?.users) {
+      setUsers(usersData.users)
+    }
+  }, [usersData])
 
   // Debug logging
   useEffect(() => {
@@ -297,6 +407,12 @@ function Users() {
                       Role
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Region
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Created
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -316,76 +432,54 @@ function Users() {
                         <div className="text-sm text-gray-500">{userItem.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {editingUser?.id === userItem.id ? (
-                          <select
-                            value={editingUser.role_id}
-                            onChange={(e) =>
-                              setEditingUser({
-                                ...editingUser,
-                                role_id: parseInt(e.target.value),
-                              })
-                            }
-                            className="text-sm border border-gray-300 rounded px-2 py-1"
-                            disabled={updatingRole}
-                          >
-                            {roles.map((role) => (
-                              <option key={role.id} value={role.id}>
-                                {role.role_name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            {userItem.role_name}
-                          </span>
-                        )}
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {userItem.role_name}
+                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(userItem.created_at).toLocaleDateString()}
+                        {userItem.region_name ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            {userItem.region_name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={userItem.is_active !== false}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              handleToggleUserStatus(userItem.id, userItem.is_active !== false)
+                            }}
+                            disabled={togglingStatus === userItem.id}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 bg-red-600 peer-disabled:opacity-50"></div>
+                        </label>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDateSimple(userItem.created_at)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {editingUser?.id === userItem.id ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleEditRole(userItem.id, editingUser.role_id)}
-                              disabled={updatingRole}
-                              className="text-green-600 hover:text-green-900 disabled:opacity-50"
-                              title="Save"
-                            >
-                              <FaCheck />
-                            </button>
-                            <button
-                              onClick={() => setEditingUser(null)}
-                              disabled={updatingRole}
-                              className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                              title="Cancel"
-                            >
-                              <FaTimes />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() =>
-                                setEditingUser({
-                                  id: userItem.id,
-                                  role_id: userItem.role_id,
-                                })
-                              }
-                              className="text-blue-600 hover:text-blue-900"
-                              title="Edit Role"
-                            >
-                              <FaEdit />
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(userItem)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Delete"
-                            >
-                              <FaTrash />
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleEditUser(userItem)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Edit User"
+                          >
+                            <FaEdit />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(userItem)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete"
+                          >
+                            <FaTrash />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -397,23 +491,26 @@ function Users() {
         </div>
       </main>
 
-      {/* Add User Modal */}
+      {/* Add/Edit User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">Add New User</h2>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {editingUser ? 'Edit User' : 'Add New User'}
+              </h2>
               <button
                 onClick={() => {
                   setShowAddModal(false)
-                  setFormData({ name: '', email: '', password: '', role_id: '' })
+                  setEditingUser(null)
+                  setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <FaTimes />
               </button>
             </div>
-            <form onSubmit={handleAddUser} className="px-6 py-4">
+            <form onSubmit={editingUser ? handleUpdateUser : handleAddUser} className="px-6 py-4">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -441,20 +538,22 @@ function Users() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    required
-                    minLength={1}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                  />
-                </div>
+                {!editingUser && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      required
+                      minLength={1}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Role
@@ -475,13 +574,36 @@ function Users() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Region (State)
+                  </label>
+                  <select
+                    name="region_id"
+                    value={formData.region_id}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                    disabled={regionsLoading}
+                  >
+                    <option value="">Select a region (optional)</option>
+                    {regions.map((region) => (
+                      <option key={region.id} value={region.id}>
+                        {region.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Readers will automatically get access to categories assigned to their region
+                  </p>
+                </div>
               </div>
               <div className="mt-6 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddModal(false)
-                    setFormData({ name: '', email: '', password: '', role_id: '' })
+                    setEditingUser(null)
+                    setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
                   }}
                   className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
                 >
@@ -489,10 +611,16 @@ function Users() {
                 </button>
                 <button
                   type="submit"
-                  disabled={creating}
+                  disabled={creating || updatingUser}
                   className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
                 >
-                  {creating ? 'Creating...' : 'Create User'}
+                  {editingUser
+                    ? updatingUser
+                      ? 'Updating...'
+                      : 'Update User'
+                    : creating
+                    ? 'Creating...'
+                    : 'Create User'}
                 </button>
               </div>
             </form>

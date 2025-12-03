@@ -29,6 +29,7 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->post('/', 'UserController@store');
         $router->get('/roles', 'UserController@getRoles');
         $router->put('/{id}/role', 'UserController@updateRole');
+        $router->patch('/{id}/toggle-status', 'UserController@toggleStatus');
         $router->delete('/{id}', 'UserController@destroy');
     });
 
@@ -38,11 +39,17 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->post('/', 'ActivityController@store');
     });
 
+    // Region routes
+    $router->group(['prefix' => 'regions'], function () use ($router) {
+        $router->get('/', 'RegionController@index');
+    });
+
     // Story category routes (super admin only)
     $router->group(['prefix' => 'story-categories'], function () use ($router) {
         $router->get('/', 'StoryCategoryController@index');
         $router->post('/', 'StoryCategoryController@store');
         $router->put('/{id}', 'StoryCategoryController@update');
+        $router->patch('/{id}/toggle-status', 'StoryCategoryController@toggleStatus');
         $router->delete('/{id}', 'StoryCategoryController@destroy');
         $router->get('/readers', 'StoryCategoryController@getReadersWithAccess');
         $router->get('/readers/{userId}', 'StoryCategoryController@getReaderCategories');
@@ -58,6 +65,7 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->post('/{id}/approve', 'StoryController@approve');
         $router->post('/{id}/reject', 'StoryController@reject');
         $router->get('/reader/{userId}', 'StoryController@getReaderStories');
+        $router->get('/approved/all', 'StoryController@getAllApprovedStories');
         $router->get('/approved/{adminId}', 'StoryController@getApprovedStories');
         $router->put('/{id}', 'StoryController@update');
         $router->delete('/{id}', 'StoryController@destroy');

@@ -31,7 +31,7 @@ class CorsMiddleware
         if ($request->getMethod() === 'OPTIONS') {
             return response('', 200)
                 ->header('Access-Control-Allow-Origin', $origin && in_array($origin, $origins) ? $origin : $origins[0])
-                ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                 ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
                 ->header('Access-Control-Allow-Credentials', 'true')
                 ->header('Access-Control-Max-Age', '86400');
@@ -46,7 +46,7 @@ class CorsMiddleware
             $response->header('Access-Control-Allow-Origin', $origins[0]);
         }
 
-        $response->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        $response->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
             ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
             ->header('Access-Control-Allow-Credentials', 'true');
 

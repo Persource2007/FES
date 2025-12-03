@@ -18,6 +18,7 @@ import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
+import { formatDateTime } from '../utils/dateFormat'
 import {
   canManageStoryCategories,
   canManageReaderAccess,
@@ -40,6 +41,7 @@ function Stories() {
     name: '',
     description: '',
     is_active: true,
+    region_ids: [],
   })
 
   // Reader access form state
@@ -68,6 +70,14 @@ function Stories() {
     execute: fetchReaders,
   } = useApi(API_ENDPOINTS.STORY_CATEGORIES.READERS, { immediate: false })
 
+  // Fetch regions
+  const {
+    data: regionsData,
+    loading: regionsLoading,
+    error: regionsError,
+    execute: fetchRegions,
+  } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
+
   // Mutations
   const { execute: createCategory, loading: creating } = useMutation(
     API_ENDPOINTS.STORY_CATEGORIES.CREATE
@@ -78,6 +88,7 @@ function Stories() {
 
   const [categories, setCategories] = useState([])
   const [readers, setReaders] = useState([])
+  const regions = regionsData?.regions || []
   const [readerStories, setReaderStories] = useState([])
   const [approvedStories, setApprovedStories] = useState([])
   const [editingStory, setEditingStory] = useState(null)
@@ -151,13 +162,13 @@ function Stories() {
     }
   }
 
-  // Fetch approved stories (for admin)
+  // Fetch all approved stories (for admin)
   const fetchApprovedStories = async () => {
     if (!user) return
     setApprovedStoriesLoading(true)
     try {
       const response = await apiClient.get(
-        API_ENDPOINTS.STORIES.APPROVED_STORIES(user.id)
+        API_ENDPOINTS.STORIES.ALL_APPROVED_STORIES
       )
       if (response.data.success) {
         setApprovedStories(response.data.stories || [])
@@ -179,6 +190,7 @@ function Stories() {
       
       if (canManage) {
         fetchCategories()
+        fetchRegions()
         if (canManageAccess) {
           fetchReaders()
         }
@@ -218,7 +230,7 @@ function Stories() {
       if (response?.success) {
         toast.success('Category created successfully')
         setShowAddModal(false)
-        setFormData({ name: '', description: '', is_active: true })
+        setFormData({ name: '', description: '', is_active: true, region_ids: [] })
         fetchCategories()
         addActivity('create', `Created story category: ${formData.name}`)
       }
@@ -246,12 +258,67 @@ function Stories() {
 
   const handleEditCategory = (category) => {
     setEditingCategory(category)
+    // Get region IDs from category.regions if available
+    const regionIds = category.regions ? category.regions.map(r => r.id) : []
+    
+    // Ensure regions are loaded when editing
+    if (regions.length === 0 && !regionsLoading) {
+      fetchRegions()
+    }
+    
     setFormData({
       name: category.name,
       description: category.description || '',
       is_active: category.is_active,
+      region_ids: regionIds,
     })
     setShowAddModal(true)
+  }
+
+  const handleToggleCategoryStatus = async (categoryId, newStatus) => {
+    // Optimistically update the UI
+    const category = categories.find(c => c.id === categoryId)
+    const originalStatus = category?.is_active
+    
+    // Update local state immediately
+    setCategories(prevCategories =>
+      prevCategories.map(cat =>
+        cat.id === categoryId ? { ...cat, is_active: newStatus } : cat
+      )
+    )
+
+    try {
+      const response = await apiClient.patch(
+        API_ENDPOINTS.STORY_CATEGORIES.TOGGLE_STATUS(categoryId)
+      )
+      if (response.data.success) {
+        toast.success(`Category ${newStatus ? 'activated' : 'deactivated'} successfully`)
+        fetchCategories() // Refresh to get server state
+        if (category) {
+          addActivity('edit', `${newStatus ? 'Activated' : 'Deactivated'} story category: ${category.name}`)
+        }
+      } else {
+        // Revert on failure
+        setCategories(prevCategories =>
+          prevCategories.map(cat =>
+            cat.id === categoryId ? { ...cat, is_active: originalStatus } : cat
+          )
+        )
+      }
+    } catch (error) {
+      console.error('Error toggling category status:', error)
+      // Revert on error
+      setCategories(prevCategories =>
+        prevCategories.map(cat =>
+          cat.id === categoryId ? { ...cat, is_active: originalStatus } : cat
+        )
+      )
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update category status'
+      toast.error(errorMessage)
+    }
   }
 
   const handleUpdateCategory = async () => {
@@ -266,7 +333,7 @@ function Stories() {
         toast.success('Category updated successfully')
         setShowAddModal(false)
         setEditingCategory(null)
-        setFormData({ name: '', description: '', is_active: true })
+        setFormData({ name: '', description: '', is_active: true, region_ids: [] })
         fetchCategories()
         addActivity('edit', `Updated story category: ${formData.name}`)
       }
@@ -458,17 +525,6 @@ function Stories() {
     return badges[status] || badges.draft
   }
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
 
   // Render reader story submission view if user can post but not manage categories
   if (canPost && !canManageCategories) {
@@ -705,12 +761,12 @@ function Stories() {
                               </div>
                               <div className="flex items-center gap-1">
                                 <FaClock className="text-gray-400" />
-                                <span>Submitted {formatDate(story.created_at)}</span>
+                                <span>Submitted {formatDateTime(story.created_at)}</span>
                               </div>
                               {story.published_at && (
                                 <div className="flex items-center gap-1">
                                   <FaCheck className="text-gray-400" />
-                                  <span>Published {formatDate(story.published_at)}</span>
+                                  <span>Published {formatDateTime(story.published_at)}</span>
                                 </div>
                               )}
                             </div>
@@ -749,7 +805,7 @@ function Stories() {
                 <button
                   onClick={() => {
                     setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true })
+                    setFormData({ name: '', description: '', is_active: true, region_ids: [] })
                     setShowAddModal(true)
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
@@ -830,6 +886,9 @@ function Stories() {
                           Description
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Regions
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
                         </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -853,16 +912,35 @@ function Stories() {
                               {category.description || '—'}
                             </span>
                           </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-wrap gap-1">
+                              {category.regions && category.regions.length > 0 ? (
+                                category.regions.map((region) => (
+                                  <span
+                                    key={region.id}
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                                  >
+                                    {region.name}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 text-sm">—</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span
-                              className={`px-2 py-1 text-xs rounded-full ${
-                                category.is_active
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                            >
-                              {category.is_active ? 'Active' : 'Inactive'}
-                            </span>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={category.is_active || false}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  handleToggleCategoryStatus(category.id, !category.is_active)
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 bg-red-600"></div>
+                            </label>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <div className="flex items-center justify-end gap-2">
@@ -978,7 +1056,7 @@ function Stories() {
                 </div>
               ) : approvedStories.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
-                  You haven't approved any stories yet.
+                  No approved stories found.
                 </div>
               ) : (
                 <div className="space-y-4 p-6">
@@ -1007,9 +1085,15 @@ function Stories() {
                               <FaFolder className="text-gray-400" />
                               <span>{story.category_name}</span>
                             </div>
+                            {story.approver_name && (
+                              <div className="flex items-center gap-1">
+                                <FaCheck className="text-gray-400" />
+                                <span>Approved by {story.approver_name}</span>
+                              </div>
+                            )}
                             <div className="flex items-center gap-1">
                               <FaClock className="text-gray-400" />
-                              <span>Published {formatDate(story.published_at)}</span>
+                              <span>Published {formatDateTime(story.published_at)}</span>
                             </div>
                           </div>
                           <p className="text-gray-700 mt-2">{story.content}</p>
@@ -1185,7 +1269,7 @@ function Stories() {
                   onClick={() => {
                     setShowAddModal(false)
                     setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true })
+                    setFormData({ name: '', description: '', is_active: true, region_ids: [] })
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -1219,6 +1303,61 @@ function Stories() {
                     placeholder="Category description"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Assign to Regions (States)
+                  </label>
+                  <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                    {regionsLoading ? (
+                      <p className="text-sm text-gray-500">Loading regions...</p>
+                    ) : regions.length === 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-500">No regions available</p>
+                        <button
+                          type="button"
+                          onClick={() => fetchRegions()}
+                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          Click to load regions
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {regions.map((region) => (
+                          <label
+                            key={region.id}
+                            className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.region_ids.includes(region.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    region_ids: [...prev.region_ids, region.id],
+                                  }))
+                                } else {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    region_ids: prev.region_ids.filter(
+                                      (id) => id !== region.id
+                                    ),
+                                  }))
+                                }
+                              }}
+                              className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600"
+                            />
+                            <span className="text-sm text-gray-700">{region.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Readers from selected regions will automatically get access to this category
+                  </p>
+                </div>
                 <div className="flex items-center">
                   <input
                     type="checkbox"
@@ -1247,7 +1386,7 @@ function Stories() {
                   onClick={() => {
                     setShowAddModal(false)
                     setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true })
+                    setFormData({ name: '', description: '', is_active: true, region_ids: [] })
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >

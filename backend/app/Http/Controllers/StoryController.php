@@ -29,6 +29,7 @@ class StoryController extends Controller
             $stories = DB::table('stories')
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
+                ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('stories.status', 'published')
                 ->select(
                     'stories.id',
@@ -38,8 +39,11 @@ class StoryController extends Controller
                     'stories.created_at',
                     'stories.published_at',
                     'users.name as author_name',
+                    'users.region_id',
                     'story_categories.id as category_id',
-                    'story_categories.name as category_name'
+                    'story_categories.name as category_name',
+                    'regions.name as region_name',
+                    'regions.code as region_code'
                 )
                 ->orderBy('stories.published_at', 'desc')
                 ->get();
@@ -173,10 +177,22 @@ class StoryController extends Controller
             }
 
             // Check if user has access to this category
+            // Access can be from:
+            // 1. Direct access (reader_category_access table)
+            // 2. Region-based access (category_regions table matching user's region)
             $hasCategoryAccess = DB::table('reader_category_access')
                 ->where('user_id', $userId)
                 ->where('category_id', $request->category_id)
                 ->exists();
+
+            // Check region-based access
+            $hasRegionAccess = false;
+            if ($user->region_id) {
+                $hasRegionAccess = DB::table('category_regions')
+                    ->where('category_id', $request->category_id)
+                    ->where('region_id', $user->region_id)
+                    ->exists();
+            }
 
             // Super admins have access to all categories
             $superAdminRoleId = DB::table('roles')
@@ -185,7 +201,7 @@ class StoryController extends Controller
 
             $isSuperAdmin = $user->role_id == $superAdminRoleId;
 
-            if (!$isSuperAdmin && !$hasCategoryAccess) {
+            if (!$isSuperAdmin && !$hasCategoryAccess && !$hasRegionAccess) {
                 return $this->errorResponse('You do not have access to post in this category', 403);
             }
 
@@ -481,6 +497,56 @@ class StoryController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching approved stories', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse(
+                'An error occurred while fetching approved stories',
+                500
+            );
+        }
+    }
+
+    /**
+     * Get all approved stories by any admin (Super admin only)
+     * 
+     * @return JsonResponse
+     */
+    public function getAllApprovedStories(): JsonResponse
+    {
+        try {
+            $stories = DB::table('stories')
+                ->join('users', 'stories.user_id', '=', 'users.id')
+                ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
+                ->leftJoin('users as approvers', 'stories.approved_by', '=', 'approvers.id')
+                ->where('stories.status', 'published')
+                ->whereNotNull('stories.approved_by')
+                ->select(
+                    'stories.id',
+                    'stories.title',
+                    'stories.content',
+                    'stories.status',
+                    'stories.created_at',
+                    'stories.published_at',
+                    'stories.approved_at',
+                    'stories.approved_by',
+                    'users.id as user_id',
+                    'users.name as author_name',
+                    'users.email as author_email',
+                    'story_categories.id as category_id',
+                    'story_categories.name as category_name',
+                    'approvers.name as approver_name',
+                    'approvers.email as approver_email'
+                )
+                ->orderBy('stories.published_at', 'desc')
+                ->get();
+
+            return $this->successResponse([
+                'stories' => $stories,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching all approved stories', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

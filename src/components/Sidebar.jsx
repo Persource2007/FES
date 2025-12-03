@@ -6,7 +6,6 @@ import {
   FaHome,
   FaUsers,
   FaFileAlt,
-  FaCog,
   FaSignOutAlt,
   FaChevronLeft,
   FaChevronRight,
@@ -14,6 +13,8 @@ import {
   FaBell,
   FaChevronDown,
   FaChevronUp,
+  FaGlobe,
+  FaInfoCircle,
 } from 'react-icons/fa'
 import {
   canManageUsers,
@@ -21,7 +22,6 @@ import {
   canPostStories,
   canViewStories,
   canViewActivity,
-  canManageSettings,
 } from '../utils/permissions'
 import { useApi } from '../hooks/useApi'
 import { API_ENDPOINTS } from '../utils/constants'
@@ -33,6 +33,8 @@ function Sidebar({ user, onLogout }) {
   const location = useLocation()
   const navigate = useNavigate()
   const [pendingCount, setPendingCount] = useState(0)
+  const [showTranslateDropdown, setShowTranslateDropdown] = useState(false)
+  const [showLanguageInfo, setShowLanguageInfo] = useState(false)
 
   // Fetch pending stories count for super admin
   const {
@@ -57,6 +59,73 @@ function Sidebar({ user, onLogout }) {
     }
   }, [pendingCountData])
 
+  // Google Translate initialization for dashboard pages
+  useEffect(() => {
+    // Define the callback function for Google Translate (for dashboard pages)
+    // This will be called when the Google Translate script loads
+    const sidebarTranslateInit = () => {
+      // Check if element exists and Google Translate is available
+      const element = document.getElementById('google_translate_element_sidebar')
+      if (element && window.google && window.google.translate) {
+        try {
+          new window.google.translate.TranslateElement(
+            {
+              pageLanguage: 'en',
+              includedLanguages: 'en,hi,te,ta,kn,ml,gu,pa,or,bn,mr,as,ur',
+              layout: window.google.translate.TranslateElement.InlineLayout.HORIZONTAL,
+              autoDisplay: false,
+            },
+            'google_translate_element_sidebar'
+          )
+          
+          // Hide the default Google Translate widget after initialization
+          setTimeout(() => {
+            const googleWidget = document.querySelector('.goog-te-gadget')
+            if (googleWidget) {
+              googleWidget.style.display = 'none'
+            }
+          }, 500)
+        } catch (e) {
+          console.log('Google Translate initialization error:', e)
+        }
+      }
+    }
+
+    // Set up the callback (will be called by the script or manually)
+    // Use a unique name to avoid conflicts with Header
+    window.googleTranslateElementInitSidebar = sidebarTranslateInit
+
+    // If Google Translate is already loaded, initialize immediately
+    if (window.google && window.google.translate) {
+      sidebarTranslateInit()
+    } else {
+      // Also set up the default callback in case script hasn't loaded yet
+      // The script in index.html uses 'googleTranslateElementInit' as callback
+      // We'll override it to handle both Header and Sidebar cases
+      const originalCallback = window.googleTranslateElementInit
+      window.googleTranslateElementInit = () => {
+        // Call original if it exists (for Header)
+        if (originalCallback && typeof originalCallback === 'function') {
+          originalCallback()
+        }
+        // Also initialize sidebar version
+        sidebarTranslateInit()
+      }
+    }
+
+    // Continuously hide the default Google Translate widget
+    const hideGoogleWidget = setInterval(() => {
+      const googleWidget = document.querySelector('.goog-te-gadget')
+      if (googleWidget) {
+        googleWidget.style.display = 'none'
+      }
+    }, 500)
+
+    return () => {
+      clearInterval(hideGoogleWidget)
+    }
+  }, [])
+
   // Auto-expand Stories menu if on review page
   useEffect(() => {
     if (location.pathname === '/dashboard/stories/review') {
@@ -70,6 +139,75 @@ function Sidebar({ user, onLogout }) {
   const handleLogout = () => {
     onLogout()
     navigate('/login')
+  }
+
+  const languages = [
+    { code: 'en', name: 'English' },
+    { code: 'hi', name: 'हिंदी (Hindi)' },
+    { code: 'te', name: 'తెలుగు (Telugu)' },
+    { code: 'ta', name: 'தமிழ் (Tamil)' },
+    { code: 'kn', name: 'ಕನ್ನಡ (Kannada)' },
+    { code: 'ml', name: 'മലയാളം (Malayalam)' },
+    { code: 'gu', name: 'ગુજરાતી (Gujarati)' },
+    { code: 'pa', name: 'ਪੰਜਾਬੀ (Punjabi)' },
+    { code: 'or', name: 'ଓଡ଼ିଆ (Odia)' },
+    { code: 'bn', name: 'বাংলা (Bengali)' },
+    { code: 'mr', name: 'मराठी (Marathi)' },
+    { code: 'as', name: 'অসমীয়া (Assamese)' },
+    { code: 'ur', name: 'اردو (Urdu)' },
+  ]
+
+  const changeLanguage = (langCode) => {
+    setShowTranslateDropdown(false)
+    
+    // Function to trigger Google Translate
+    const triggerTranslation = () => {
+      // Method 1: Try to find and trigger the select element directly
+      const selectField = document.querySelector('.goog-te-combo')
+      if (selectField) {
+        selectField.value = langCode
+        selectField.dispatchEvent(new Event('change', { bubbles: true }))
+        return true
+      }
+
+      // Method 2: Try to access via iframe
+      const iframe = document.querySelector('iframe.goog-te-menu-frame')
+      if (iframe && iframe.contentWindow) {
+        try {
+          const iframeDoc = iframe.contentWindow.document || iframe.contentDocument
+          const select = iframeDoc.querySelector('select')
+          if (select) {
+            select.value = langCode
+            select.dispatchEvent(new Event('change', { bubbles: true }))
+            return true
+          }
+        } catch (e) {
+          console.log('Cannot access iframe:', e)
+        }
+      }
+
+      return false
+    }
+
+    // Set cookie first (this is the most reliable method)
+    const domain = window.location.hostname
+    // Set cookie with proper expiration
+    const expirationDate = new Date()
+    expirationDate.setFullYear(expirationDate.getFullYear() + 1)
+    document.cookie = `googtrans=/en/${langCode}; path=/; domain=${domain}; expires=${expirationDate.toUTCString()}`
+    
+    // Also set it without domain for localhost
+    if (domain === 'localhost' || domain === '127.0.0.1') {
+      document.cookie = `googtrans=/en/${langCode}; path=/; expires=${expirationDate.toUTCString()}`
+    }
+
+    // Try direct methods first
+    const success = triggerTranslation()
+    
+    if (!success) {
+      // If direct methods didn't work, reload page to apply cookie-based translation
+      window.location.reload()
+    }
   }
 
   // If user doesn't have permissions array, show all menu items (fallback for users logged in before permissions system)
@@ -124,17 +262,6 @@ function Sidebar({ user, onLogout }) {
                   },
                 ]
               : [],
-          },
-        ]
-      : []),
-    // Settings menu - visible if user can manage settings OR if permissions not set up yet
-    ...((hasPermissions ? canManageSettings(user) : true)
-      ? [
-          {
-            name: 'Settings',
-            path: '/dashboard/settings',
-            icon: FaCog,
-            visible: true,
           },
         ]
       : []),
@@ -198,22 +325,38 @@ function Sidebar({ user, onLogout }) {
         `}
       >
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-700 h-16 flex-shrink-0">
-          {isOpen ? (
-            <h2 className="text-xl font-bold text-white whitespace-nowrap overflow-hidden">
-              FES Stories
-            </h2>
-          ) : (
-            <div className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold">FS</span>
-            </div>
-          )}
+        <div className="flex items-center justify-center p-4 border-b border-slate-700 h-16 flex-shrink-0">
           <button
             onClick={toggleSidebar}
-            className="hidden lg:flex items-center justify-center p-1.5 hover:bg-slate-700 rounded transition-colors flex-shrink-0 ml-2"
+            className="hidden lg:flex items-center justify-center w-full rounded transition-colors group relative gap-2"
             aria-label={isOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            title={isOpen ? 'Click to collapse sidebar' : 'Click to expand sidebar'}
           >
-            {isOpen ? <FaChevronLeft className="w-4 h-4" /> : <FaChevronRight className="w-4 h-4" />}
+            {isOpen ? (
+              <>
+                <img 
+                  src="/images/fes-logo.svg" 
+                  alt="FES Stories" 
+                  className="h-8 w-auto flex-shrink-0"
+                />
+                <FaChevronLeft className="w-3 h-3 text-slate-400 flex-shrink-0 ml-auto" />
+              </>
+            ) : (
+              <>
+                <div 
+                  className="h-8 w-8 flex-shrink-0 rounded-full bg-white p-1.5"
+                  style={{
+                    backgroundImage: 'url(/images/fes-logo.svg)',
+                    backgroundSize: 'contain',
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat',
+                    clipPath: 'circle(50% at 50% 50%)'
+                  }}
+                  title="FES Stories"
+                />
+                <FaChevronRight className="w-3 h-3 text-slate-400 flex-shrink-0" />
+              </>
+            )}
           </button>
         </div>
 
@@ -258,7 +401,7 @@ function Sidebar({ user, onLogout }) {
                   <div>
                     <div
                       className={`
-                        flex items-center gap-3 px-3 py-2.5 rounded-lg
+                        flex items-center ${isOpen ? 'gap-3 px-3' : 'justify-center px-2'} py-2.5 rounded-lg
                         transition-all duration-150
                         relative
                         ${
@@ -272,10 +415,10 @@ function Sidebar({ user, onLogout }) {
                       <Link
                         to={item.path}
                         onClick={closeMobileSidebar}
-                        className="flex items-center gap-3 flex-1 min-w-0"
+                        className={`flex items-center ${isOpen ? 'gap-3 flex-1 min-w-0' : 'justify-center'} w-full`}
                         title={!isOpen ? item.name : ''}
                       >
-                        <Icon className="text-lg flex-shrink-0 w-5 h-5" />
+                        <Icon className={`${isOpen ? 'text-lg w-5 h-5' : 'text-xl w-6 h-6'} flex-shrink-0`} />
                         {isOpen && (
                           <>
                             <span className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1">
@@ -356,18 +499,89 @@ function Sidebar({ user, onLogout }) {
           </ul>
         </nav>
 
-        {/* Logout Button */}
-        <div className="p-4 border-t border-slate-700 flex-shrink-0">
+        {/* Language Selector and Logout Button */}
+        <div className="p-4 border-t border-slate-700 flex-shrink-0 space-y-2">
+          {/* Language Selector */}
+          <div className="relative">
+            <div className={`flex items-center ${isOpen ? 'gap-1' : 'justify-center'}`}>
+              <button
+                onClick={() => setShowTranslateDropdown(!showTranslateDropdown)}
+                className={`
+                  ${isOpen ? 'flex-1 flex items-center gap-3 px-3' : 'flex items-center justify-center px-2'} py-2.5 rounded-lg
+                  text-slate-300 hover:bg-slate-700 hover:text-white
+                  transition-all duration-150 w-full
+                `}
+                title={!isOpen ? 'Language' : ''}
+              >
+                <FaGlobe className={`${isOpen ? 'text-lg w-5 h-5' : 'text-xl w-6 h-6'} flex-shrink-0`} />
+                {isOpen && (
+                  <span className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis notranslate">
+                    Language
+                  </span>
+                )}
+              </button>
+              {isOpen && (
+                <button
+                  onClick={() => setShowLanguageInfo(!showLanguageInfo)}
+                  onMouseEnter={() => setShowLanguageInfo(true)}
+                  onMouseLeave={() => setShowLanguageInfo(false)}
+                  className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded transition-colors relative"
+                  title="Language translation info"
+                >
+                  <FaInfoCircle className="text-sm" />
+                  {showLanguageInfo && (
+                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-slate-700 text-white text-xs rounded-lg p-3 shadow-lg z-50 notranslate">
+                      <p className="mb-1 font-semibold">Translation Notice</p>
+                      <p className="text-slate-300">
+                        Language functionality may be limited due to Google's copyright requirement to display their banner.
+                      </p>
+                      <div className="absolute bottom-0 left-4 transform translate-y-full">
+                        <div className="border-4 border-transparent border-t-slate-700"></div>
+                      </div>
+                    </div>
+                  )}
+                </button>
+              )}
+            </div>
+            
+            {showTranslateDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowTranslateDropdown(false)}
+                ></div>
+                <div className={`
+                  absolute bottom-full left-0 mb-2 w-56 bg-slate-700 rounded-lg shadow-lg border border-slate-600 py-2 z-20 max-h-80 overflow-y-auto notranslate
+                  ${isOpen ? '' : 'hidden'}
+                `}>
+                  {languages.map((lang) => (
+                    <button
+                      key={lang.code}
+                      onClick={() => changeLanguage(lang.code)}
+                      className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-600 hover:text-white transition-colors notranslate"
+                    >
+                      {lang.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Hidden Google Translate Element for dashboard pages */}
+          <div id="google_translate_element_sidebar" style={{ position: 'absolute', left: '-9999px', opacity: 0, pointerEvents: 'none' }}></div>
+
+          {/* Logout Button */}
           <button
             onClick={handleLogout}
             className={`
-              w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+              w-full flex items-center ${isOpen ? 'gap-3 px-3' : 'justify-center px-2'} py-2.5 rounded-lg
               text-red-400 hover:bg-slate-700 hover:text-red-300
               transition-all duration-150
             `}
             title={!isOpen ? 'Logout' : ''}
           >
-            <FaSignOutAlt className="text-lg flex-shrink-0 w-5 h-5" />
+            <FaSignOutAlt className={`${isOpen ? 'text-lg w-5 h-5' : 'text-xl w-6 h-6'} flex-shrink-0`} />
             {isOpen && (
               <span className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis">
                 Logout

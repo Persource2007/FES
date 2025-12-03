@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Helpers\PermissionHelper;
 use App\Models\StoryCategory;
 use App\Models\User;
+use App\Models\Region;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +27,7 @@ class StoryCategoryController extends Controller
     public function index(): JsonResponse
     {
         try {
-            $categories = StoryCategory::orderBy('name', 'asc')->get();
+            $categories = StoryCategory::with('regions')->orderBy('name', 'asc')->get();
 
             return $this->successResponse([
                 'categories' => $categories,
@@ -58,6 +59,8 @@ class StoryCategoryController extends Controller
                 'name' => 'required|string|max:255|unique:story_categories,name',
                 'description' => 'nullable|string',
                 'is_active' => 'nullable|boolean',
+                'region_ids' => 'nullable|array',
+                'region_ids.*' => 'exists:regions,id',
             ]);
 
             if ($validator->fails()) {
@@ -74,6 +77,17 @@ class StoryCategoryController extends Controller
                 'description' => $request->description ?? null,
                 'is_active' => $request->is_active ?? true,
             ]);
+
+            // Assign regions if provided
+            if ($request->has('region_ids') && is_array($request->region_ids)) {
+                $category->regions()->sync($request->region_ids);
+                
+                // Automatically grant access to all readers in assigned regions
+                $this->syncRegionBasedAccess($category);
+            }
+
+            // Load regions relationship
+            $category->load('regions');
 
             return $this->successResponse([
                 'message' => 'Story category created successfully',
@@ -119,6 +133,8 @@ class StoryCategoryController extends Controller
                 'name' => 'required|string|max:255|unique:story_categories,name,' . $id,
                 'description' => 'nullable|string',
                 'is_active' => 'nullable|boolean',
+                'region_ids' => 'nullable|array',
+                'region_ids.*' => 'exists:regions,id',
             ]);
 
             if ($validator->fails()) {
@@ -137,6 +153,18 @@ class StoryCategoryController extends Controller
             }
             $category->save();
 
+            // Update regions if provided
+            if ($request->has('region_ids')) {
+                $regionIds = is_array($request->region_ids) ? $request->region_ids : [];
+                $category->regions()->sync($regionIds);
+                
+                // Automatically grant access to all readers in assigned regions
+                $this->syncRegionBasedAccess($category);
+            }
+
+            // Load regions relationship
+            $category->load('regions');
+
             return $this->successResponse([
                 'message' => 'Story category updated successfully',
                 'category' => $category,
@@ -149,6 +177,45 @@ class StoryCategoryController extends Controller
 
             return $this->errorResponse(
                 'An error occurred while updating story category',
+                500
+            );
+        }
+    }
+
+    /**
+     * Toggle category active status
+     * 
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function toggleStatus(int $id): JsonResponse
+    {
+        try {
+            // Find category
+            $category = StoryCategory::find($id);
+            if (!$category) {
+                return $this->errorResponse('Story category not found', 404);
+            }
+
+            // Toggle status
+            $category->is_active = !$category->is_active;
+            $category->save();
+
+            // Load regions relationship
+            $category->load('regions');
+
+            return $this->successResponse([
+                'message' => 'Category status updated successfully',
+                'category' => $category,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error toggling category status', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse(
+                'An error occurred while updating category status',
                 500
             );
         }
@@ -218,10 +285,32 @@ class StoryCategoryController extends Controller
             }
 
             // Get categories accessible by this reader
+            // Include categories from:
+            // 1. Direct access (reader_category_access table)
+            // 2. Region-based access (category_regions table matching user's region)
+            $userRegionId = $user->region_id;
+            
             $categories = DB::table('story_categories')
-                ->join('reader_category_access', 'story_categories.id', '=', 'reader_category_access.category_id')
-                ->where('reader_category_access.user_id', $userId)
                 ->where('story_categories.is_active', true)
+                ->where(function ($query) use ($userId, $userRegionId) {
+                    // Direct access
+                    $query->whereExists(function ($subQuery) use ($userId) {
+                        $subQuery->select(DB::raw(1))
+                            ->from('reader_category_access')
+                            ->whereColumn('reader_category_access.category_id', 'story_categories.id')
+                            ->where('reader_category_access.user_id', $userId);
+                    });
+                    
+                    // Region-based access
+                    if ($userRegionId) {
+                        $query->orWhereExists(function ($subQuery) use ($userRegionId) {
+                            $subQuery->select(DB::raw(1))
+                                ->from('category_regions')
+                                ->whereColumn('category_regions.category_id', 'story_categories.id')
+                                ->where('category_regions.region_id', $userRegionId);
+                        });
+                    }
+                })
                 ->select(
                     'story_categories.id',
                     'story_categories.name',
@@ -230,6 +319,7 @@ class StoryCategoryController extends Controller
                     'story_categories.created_at',
                     'story_categories.updated_at'
                 )
+                ->distinct()
                 ->orderBy('story_categories.name', 'asc')
                 ->get();
 
@@ -426,6 +516,77 @@ class StoryCategoryController extends Controller
      * @param int $statusCode HTTP status code
      * @return JsonResponse
      */
+    /**
+     * Sync region-based access for a category
+     * Automatically grants access to all readers in assigned regions
+     * 
+     * @param StoryCategory $category
+     * @return void
+     */
+    private function syncRegionBasedAccess(StoryCategory $category): void
+    {
+        // Get all regions assigned to this category
+        $regionIds = $category->regions()->pluck('regions.id')->toArray();
+        
+        if (empty($regionIds)) {
+            return;
+        }
+
+        // Get super admin role ID (super admins don't need category access)
+        $superAdminRoleId = DB::table('roles')
+            ->where('role_name', 'Super admin')
+            ->value('id');
+
+        // Get all readers in these regions who can post stories
+        $readers = DB::table('users')
+            ->whereIn('region_id', $regionIds)
+            ->where('role_id', '!=', $superAdminRoleId)
+            ->whereNotNull('region_id')
+            ->pluck('id')
+            ->toArray();
+
+        if (empty($readers)) {
+            return;
+        }
+
+        // Get readers who can post stories (check permissions)
+        $readersWithPermission = [];
+        foreach ($readers as $readerId) {
+            $reader = User::find($readerId);
+            if ($reader && PermissionHelper::canPostStories($reader)) {
+                $readersWithPermission[] = $readerId;
+            }
+        }
+
+        if (empty($readersWithPermission)) {
+            return;
+        }
+
+        // Grant access to these readers (insert only if not exists)
+        $timestamp = date('Y-m-d H:i:s');
+        $accessData = [];
+        foreach ($readersWithPermission as $readerId) {
+            // Check if access already exists
+            $exists = DB::table('reader_category_access')
+                ->where('user_id', $readerId)
+                ->where('category_id', $category->id)
+                ->exists();
+
+            if (!$exists) {
+                $accessData[] = [
+                    'user_id' => $readerId,
+                    'category_id' => $category->id,
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ];
+            }
+        }
+
+        if (!empty($accessData)) {
+            DB::table('reader_category_access')->insert($accessData);
+        }
+    }
+
     protected function errorResponse(string $message, int $statusCode = 400): JsonResponse
     {
         return response()->json([

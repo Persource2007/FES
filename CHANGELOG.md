@@ -378,5 +378,242 @@ When making changes to the project:
 
 ---
 
-**Last Updated:** December 2, 2025
+### December 3, 2025
+
+#### User and Category Status Management
+
+**File: `backend/database/migrations/2024_12_02_000005_add_is_active_to_users_table.php`** (NEW)
+- Created migration to add `is_active` column to users table - Boolean column with default value `true` for user activation status
+
+**File: `backend/app/Models/User.php`**
+- Added `is_active` to fillable attributes - Allows mass assignment of user active status
+- Added `is_active` to casts - Boolean casting for user active status
+
+**File: `backend/app/Http/Controllers/UserController.php`**
+- Added `toggleStatus()` method - PATCH endpoint to toggle user active/inactive status
+- Updated `index()` method - Includes `is_active` field in user list response
+- Updated `store()` method - Sets default `is_active` to `true` for new users
+
+**File: `backend/app/Http/Controllers/StoryCategoryController.php`**
+- Added `toggleStatus()` method - PATCH endpoint to toggle category active/inactive status
+
+**File: `backend/routes/api.php`**
+- Added PATCH `/api/users/{id}/toggle-status` route - Toggle user active status
+- Added PATCH `/api/story-categories/{id}/toggle-status` route - Toggle category active status
+
+**File: `backend/app/Http/Middleware/CorsMiddleware.php`**
+- Updated CORS headers - Added `PATCH` to `Access-Control-Allow-Methods` to support status toggle endpoints
+
+**File: `src/pages/Users.jsx`**
+- Added status toggle switch - Color-coded toggle (green=active, red=inactive) for user status
+- Implemented `handleToggleUserStatus()` - Optimistic UI updates with error handling
+- Added `togglingStatus` state - Tracks loading state for individual toggle operations
+- Converted `users` to state variable - Enables optimistic UI updates and proper re-rendering
+
+**File: `src/pages/Stories.jsx`**
+- Added status toggle switch - Color-coded toggle (green=active, red=inactive) for category status
+- Implemented `handleToggleCategoryStatus()` - Optimistic UI updates with error handling
+- Added event propagation prevention - `e.stopPropagation()` on toggle to prevent row click events
+
+**File: `src/utils/constants.js`**
+- Added `USERS.TOGGLE_STATUS(id)` endpoint - API endpoint constant for user status toggle
+- Added `STORY_CATEGORIES.TOGGLE_STATUS(id)` endpoint - API endpoint constant for category status toggle
+
+#### UI/UX Improvements
+
+**File: `src/pages/Users.jsx`**
+- Removed "Active/Inactive" text labels - Toggle switches now show only color (green/red) without text
+- Improved toggle visual feedback - Clear color distinction between active (green) and inactive (red) states
+
+**File: `src/pages/Stories.jsx`**
+- Removed "Active/Inactive" text labels - Toggle switches now show only color (green/red) without text
+- Improved toggle visual feedback - Clear color distinction between active (green) and inactive (red) states
+
+#### Issues Resolved
+
+**Status Toggle Functionality:**
+- ✅ User status toggle implementation - Added toggle switch and API integration for user activation/deactivation
+- ✅ Category status toggle implementation - Added toggle switch and API integration for category activation/deactivation
+- ✅ CORS PATCH method support - Fixed network errors by adding PATCH to allowed CORS methods
+- ✅ Optimistic UI updates - Toggle switches update immediately with fallback on API failure
+- ✅ Users page white screen fix - Converted users from derived constant to state variable for proper re-rendering
+- ✅ Toggle event propagation - Fixed category toggle triggering row click by preventing event propagation
+
+**UI Improvements:**
+- ✅ Toggle visual design - Removed text labels, using only color-coded toggles (green=active, red=inactive)
+- ✅ Loading states - Individual toggle loading states prevent multiple simultaneous requests
+
+---
+
+### December 3, 2025 (Continued)
+
+#### Swagger Documentation Fixes
+
+**File: `backend/api-docs/swagger.yaml`**
+- Fixed YAML syntax errors - Removed special character (`&`) from example values that caused parsing errors
+- Removed trailing spaces - Cleaned up whitespace throughout the file to prevent YAML parsing issues
+- Fixed duplicate components section - Removed duplicate `components` block that was causing structure errors
+- Fixed securitySchemes indentation - Corrected indentation to properly nest under `components` section
+- Fixed category toggle endpoint path - Changed from `/api/story-categories/{id}` (patch) to `/api/story-categories/{id}/toggle-status` to match actual route
+- Fixed indentation error at line 1976 - Quoted description string containing colon to prevent YAML mapping parsing error
+- Removed requestBody from DELETE operation - OpenAPI 3.0 specification does not allow requestBody in DELETE operations
+
+#### Backend Bug Fixes
+
+**File: `backend/app/Http/Controllers/UserController.php`**
+- Added missing PermissionHelper import - Fixed "Class 'PermissionHelper' not found" error when creating users
+- User creation now properly checks permissions for region-based category access
+
+#### Issues Resolved
+
+**Swagger Documentation:**
+- ✅ Postman import errors - Fixed multiple YAML syntax and structure issues preventing Postman from importing the API documentation
+- ✅ Invalid format errors - Resolved "incorrect format" errors by fixing YAML syntax, indentation, and structure
+- ✅ Parser errors - Fixed "bad indentation of a mapping entry" error by properly quoting description strings
+- ✅ Semantic errors - Removed invalid requestBody from DELETE operation per OpenAPI 3.0 specification
+
+**User Creation:**
+- ✅ PermissionHelper error - Fixed missing import causing error message when creating users through admin portal
+- ✅ User creation flow - Users now create successfully without error messages, with proper permission checks
+
+---
+
+---
+
+### December 3, 2025 (Continued)
+
+#### Frontend Refactoring - Component Structure
+
+**File: `src/components/Header.jsx`** (NEW)
+- Created static Header component - Reusable header component for all frontend pages
+- Removed "Home" link from navigation - Logo now serves as home redirect, removed separate "Home" menu item
+- Navigation menu - Shows only "Stories" and "Login" links
+- Color scheme updated - Applied FES color scheme with greens and earth tones matching https://fes.org.in/
+- Logo integration - Replaced "Stories from the Commons" text with `fes-logo.svg` image
+- Non-sticky header - Removed `sticky top-0 z-50` to allow natural page flow
+
+**File: `src/components/Footer.jsx`** (NEW)
+- Created static Footer component - Reusable footer component for all frontend pages
+- Reduced whitespace - Minimized padding and margins for more compact footer
+- Non-clickable newsletter email - Made newsletter email textbox non-clickable (disabled state)
+
+**File: `src/pages/Home.jsx`**
+- Removed unused pages/links - Cleaned up navigation and removed non-functional sections
+- Integrated Header and Footer components - Replaced inline header/footer with reusable components
+- Removed search box - Removed non-functional search box from home page
+- Redesigned home page structure - Implemented new layout with:
+  - Masthead banner with hero image (`masthead-hero.jpg`)
+  - Introduction to Commons section
+  - Interactive map placeholder
+  - News section
+  - Publications section
+  - Partner logos section
+- Applied FES color scheme - Updated colors to match https://fes.org.in/ (greens and earth tones)
+
+**File: `src/pages/PublicStories.jsx`**
+- Integrated Header and Footer components - Replaced inline header/footer with reusable components
+- Removed newsletter section - Newsletter now only appears in Footer component
+
+**File: `public/images/masthead-hero.jpg`** (NEW)
+- Added masthead hero image - High-quality image for home page banner
+
+**File: `public/images/fes-logo.svg`** (NEW)
+- Added FES logo SVG - Official logo for use in header and sidebar
+
+#### Backend - Approved Stories Enhancement
+
+**File: `backend/app/Http/Controllers/StoryController.php`**
+- Updated `getApprovedStories()` to `getAllApprovedStories()` - Changed method to fetch all approved stories by any admin
+- Added approver information - Includes `approver_name` and `approver_email` via left join with `users` table (aliased as `approvers`)
+- Returns all published stories - No longer filtered by specific admin ID
+
+**File: `backend/routes/api.php`**
+- Added `/api/stories/approved/all` route - New endpoint for fetching all approved stories
+- Route ordering - Ensured specific route (`/approved/{adminId}`) comes after general route (`/approved`)
+
+**File: `src/pages/Stories.jsx`**
+- Updated `fetchApprovedStories()` - Now calls `ALL_APPROVED_STORIES` endpoint instead of admin-specific endpoint
+- Updated approved stories display - Shows "Approved by {approver_name}" for each story
+- Updated empty state message - Changed to "No approved stories found"
+- Removed sticky header - Removed `sticky top-0 z-30` from header to make it non-sticky
+
+**File: `src/utils/constants.js`**
+- Added `ALL_APPROVED_STORIES` endpoint - API endpoint constant for fetching all approved stories
+
+#### Google Translate Integration
+
+**File: `src/components/Header.jsx`**
+- Implemented Google Translate widget - Added Google Translate script loading and initialization
+- Custom language dropdown - Created dropdown with 13 Indian languages (English, Hindi, Telugu, Tamil, Kannada, Malayalam, Gujarati, Punjabi, Odia, Bengali, Marathi, Assamese, Urdu)
+- Language selection functionality - Triggers Google Translate via cookie and DOM manipulation
+- `notranslate` class implementation - Added to language dropdown elements to prevent translation of language names
+- Hidden Google Translate widget - Default widget hidden, using custom dropdown instead
+- Banner space management - Added CSS to reserve space for Google Translate banner
+
+**File: `src/components/Sidebar.jsx`**
+- Implemented Google Translate widget - Added Google Translate initialization for dashboard pages
+- Custom language dropdown - Same language selector as Header, positioned above logout button
+- Language selection functionality - Triggers Google Translate via cookie and DOM manipulation
+- `notranslate` class implementation - Added to language dropdown elements to prevent translation of language names
+- Info button with tooltip - Added small info button explaining Google Translate banner limitations due to copyright
+- Hidden Google Translate widget - Default widget hidden, using custom dropdown instead
+
+**File: `src/styles/index.css`**
+- Google Translate styling - Added CSS rules to hide default Google Translate widget
+- Banner space reservation - Added `padding-top: 0.5px` to body to reserve space for Google Translate banner
+- Banner positioning - Fixed positioning for Google Translate banner at top of page
+- Hidden balloon frames - CSS to hide Google Translate tooltip/balloon frames
+
+#### Sidebar Improvements
+
+**File: `src/components/Sidebar.jsx`**
+- Fixed icon distortion - Adjusted CSS classes to ensure icons are properly sized (`text-xl w-6 h-6`) when collapsed
+- Made logo clickable - Logo/header area now toggles sidebar expand/collapse
+- Chevron always visible - Chevron arrow now always visible on right side of sidebar, vertically centered
+- Chevron positioning - Positioned on right edge of sidebar when collapsed (partially in sidebar, partially in content area) with hover effect
+- Logo visibility improvements - Added white background containers for logo in both expanded and collapsed states
+- Logo replaced with SVG - Replaced "FES Stories" text and placeholder with `fes-logo.svg` image
+- Removed hover color change - Removed background color change on header button hover
+- Circular logo crop when collapsed - Logo cropped in circle to show globe portion when sidebar is collapsed
+
+**File: `src/pages/Dashboard.jsx`**
+- Removed sticky header - Removed `sticky top-0 z-30` from header (later reverted)
+
+**File: `src/pages/Users.jsx`**
+- Removed sticky header - Removed `sticky top-0 z-30` from header (later reverted)
+
+**File: `src/pages/Activity.jsx`**
+- Removed sticky header - Removed `sticky top-0 z-30` from header (later reverted)
+
+**File: `src/pages/StoryReview.jsx`**
+- Removed sticky header - Removed `sticky top-0 z-30` from header (later reverted)
+
+#### Issues Resolved
+
+**Frontend Refactoring:**
+- ✅ Component reusability - Created Header and Footer components for consistent UI across all pages
+- ✅ Navigation cleanup - Removed unused links and non-functional search box
+- ✅ Footer whitespace - Reduced excessive padding and margins
+- ✅ Newsletter functionality - Made email textbox non-clickable as requested
+
+**Backend - Approved Stories:**
+- ✅ All approved stories display - Updated to show all approved stories by any admin, not just current admin
+- ✅ Approver information - Added approver name and email to approved stories response
+- ✅ API endpoint - Created new endpoint for fetching all approved stories
+
+**Google Translate:**
+- ✅ Language dropdown functionality - Custom dropdown successfully triggers Google Translate
+- ✅ Language name translation - Added `notranslate` class to prevent language names from being translated
+- ✅ Banner visibility - Reserved space for Google Translate banner instead of hiding it
+- ✅ Widget hiding - Successfully hid default Google Translate widget while maintaining functionality
+- ✅ Sidebar integration - Implemented same language selector in backend sidebar
+
+**Sidebar Improvements:**
+- ✅ Icon distortion fix - Icons now display correctly when sidebar is collapsed
+- ✅ Logo visibility - Added white background containers for logo visibility in both states
+- ✅ Chevron visibility - Chevron now always visible and properly positioned
+- ✅ Sidebar toggle - Logo clickable to toggle sidebar, with clear visual feedback
+- ✅ Logo implementation - Replaced text with SVG logo image
+
+**Last Updated:** December 3, 2025
 

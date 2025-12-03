@@ -35,7 +35,7 @@ return [
             'driver' => 'pgsql',
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', 5432),
-            'database' => env('DB_DATABASE', 'FES_Stories'),
+            'database' => env('DB_DATABASE', 'fes_stories'),
             'username' => env('DB_USERNAME', 'vyom'),
             'password' => env('DB_PASSWORD', 'VT@123'),
             'charset' => 'utf8',
@@ -64,5 +64,18 @@ return [
             'engine' => null,
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Migration Repository Table
+    |--------------------------------------------------------------------------
+    |
+    | This table keeps track of all the migrations that have already run for
+    | your application. Using this information, we can determine which of
+    | the migrations on disk haven't actually been run in the database.
+    |
+    */
+
+    'migrations' => 'migrations',
 ];
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FaHistory, FaUser, FaEdit, FaTrash, FaPlus } from 'react-icons/fa'
 import Sidebar from '../components/Sidebar'
 import { getActivities } from '../utils/activity'
+import { formatRelativeTime } from '../utils/dateFormat'
 
 function Activity() {
   const navigate = useNavigate()
@@ -71,20 +72,6 @@ function Activity() {
     }
   }
 
-  const formatTimestamp = (timestamp) => {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diff = now - date
-    const minutes = Math.floor(diff / 60000)
-    const hours = Math.floor(diff / 3600000)
-    const days = Math.floor(diff / 86400000)
-
-    if (minutes < 1) return 'Just now'
-    if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
-    if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`
-    if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`
-    return date.toLocaleDateString()
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -128,7 +115,7 @@ function Activity() {
                           {activity.message}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {formatTimestamp(activity.timestamp)}
+                          {formatRelativeTime(activity.timestamp)}
                         </p>
                       </div>
                     </div>

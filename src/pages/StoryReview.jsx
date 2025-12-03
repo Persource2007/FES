@@ -16,6 +16,7 @@ import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
 import { canManageStoryCategories } from '../utils/permissions'
+import { formatDateTime } from '../utils/dateFormat'
 
 function StoryReview() {
   const navigate = useNavigate()
@@ -129,17 +130,6 @@ function StoryReview() {
     localStorage.removeItem('user')
   }
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    const date = new Date(dateString)
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -224,7 +214,7 @@ function StoryReview() {
                         </div>
                         <div className="flex items-center gap-1">
                           <FaClock className="text-gray-400" />
-                          <span>Submitted {formatDate(story.created_at)}</span>
+                          <span>Submitted {formatDateTime(story.created_at)}</span>
                         </div>
                       </div>
                     </div>

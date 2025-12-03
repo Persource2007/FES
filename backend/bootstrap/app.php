@@ -23,6 +23,8 @@ $app->withEloquent();
 
 // Load database configuration
 $app->configure('database');
+// Load migrations configuration
+$app->configure('migrations');
 
 /*
 |--------------------------------------------------------------------------

@@ -18,6 +18,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users')) {
+            return; // Table already exists, skip migration
+        }
+
         Schema::create('users', function (Blueprint $table) {
             // Primary key - bigIncrements creates BIGSERIAL in PostgreSQL
             $table->bigIncrements('id');

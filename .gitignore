@@ -28,3 +28,7 @@ dist-ssr
 .env.local
 .env.production
 
+# Email template files
+email_template.txt
+email_update_2025-12-03.txt
+

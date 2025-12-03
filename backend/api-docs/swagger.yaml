@@ -39,6 +39,8 @@ tags:
     description: User management endpoints (Super admin only)
   - name: Activities
     description: User activity logging and retrieval endpoints
+  - name: Regions
+    description: Region management endpoints
   - name: Story Categories
     description: Story category management and reader access control endpoints (Super admin only)
   - name: Stories
@@ -402,6 +404,76 @@ paths:
                 success: false
                 message: "An error occurred while updating user role"
 
+  /api/users/{id}/toggle-status:
+    patch:
+      tags:
+        - Users
+      summary: Toggle User Active Status
+      description: |
+        Toggle the active/inactive status of a user.
+        
+        **Access:** Super admin only
+        
+        **Restrictions:**
+        - Cannot toggle Super admin users
+        - Toggles between active (true) and inactive (false)
+      operationId: toggleUserStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: integer
+            format: int64
+          example: 2
+      responses:
+        '200':
+          description: User status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToggleUserStatusResponse'
+              example:
+                success: true
+                message: "User status updated successfully"
+                user:
+                  id: 2
+                  name: "John Doe"
+                  email: "john@example.com"
+                  role_id: 2
+                  role_name: "Reader"
+                  is_active: false
+                  created_at: "2025-12-01T10:00:00+00:00"
+                  updated_at: "2025-12-02T12:00:00+00:00"
+        '403':
+          description: Forbidden - Cannot toggle Super admin user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Cannot deactivate Super admin user"
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "User not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while toggling user status"
+
   /api/users/{id}:
     delete:
       tags:
@@ -461,6 +533,50 @@ paths:
               example:
                 success: false
                 message: "An error occurred while deleting user"
+
+  /api/regions:
+    get:
+      tags:
+        - Regions
+      summary: Get all regions
+      description: |
+        Retrieves all active regions (Indian states and union territories).
+        
+        **Access:** Available to all authenticated users
+        
+        Returns a list of all regions with their names and codes.
+      operationId: getRegions
+      responses:
+        '200':
+          description: Successfully retrieved regions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegionListResponse'
+              example:
+                success: true
+                regions:
+                  - id: 1
+                    name: "Andhra Pradesh"
+                    code: "AP"
+                    is_active: true
+                    created_at: "2025-12-02T10:00:00+00:00"
+                    updated_at: "2025-12-02T10:00:00+00:00"
+                  - id: 2
+                    name: "Arunachal Pradesh"
+                    code: "AR"
+                    is_active: true
+                    created_at: "2025-12-02T10:00:00+00:00"
+                    updated_at: "2025-12-02T10:00:00+00:00"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while fetching regions"
 
   /api/activities:
     get:
@@ -700,7 +816,7 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateStoryCategoryRequest'
             example:
-              name: "Technology & Innovation"
+              name: "Technology and Innovation"
               description: "Updated description"
               is_active: true
       responses:
@@ -728,6 +844,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  /api/story-categories/{id}/toggle-status:
+    patch:
+      tags:
+        - Story Categories
+      summary: Toggle Category Active Status
+      description: |
+        Toggle the active/inactive status of a story category.
+        
+        **Access:** Super admin only
+        
+        Toggles between active (true) and inactive (false).
+      operationId: toggleCategoryStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Category ID
+          example: 1
+      responses:
+        '200':
+          description: Category status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToggleCategoryStatusResponse'
+              example:
+                success: true
+                message: "Category status updated successfully"
+                category:
+                  id: 1
+                  name: "Technology"
+                  description: "Stories about technology"
+                  is_active: false
+                  created_at: "2025-12-02T10:00:00+00:00"
+                  updated_at: "2025-12-02T12:00:00+00:00"
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Story category not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while toggling category status"
 
     delete:
       tags:
@@ -1318,20 +1491,6 @@ paths:
             format: int64
           description: Story ID
           example: 1
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - admin_user_id
-              properties:
-                admin_user_id:
-                  type: integer
-                  format: int64
-                  description: Admin user ID
-                  example: 1
       responses:
         '200':
           description: Story deleted successfully
@@ -1542,6 +1701,21 @@ components:
           type: string
           description: Role name
           example: "Reader"
+        region_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Region ID
+          example: 1
+        region_name:
+          type: string
+          nullable: true
+          description: Region name
+          example: "Maharashtra"
+        is_active:
+          type: boolean
+          description: Whether the user is active
+          example: true
         created_at:
           type: string
           format: date-time
@@ -1785,7 +1959,7 @@ components:
           example: "Stories about technology and innovation"
         is_active:
           type: boolean
-          description: Whether the category is active (default: true)
+          description: "Whether the category is active (default: true)"
           example: true
 
     CreateStoryCategoryResponse:
@@ -2288,6 +2462,125 @@ components:
         message:
           type: string
           example: "Story deleted successfully"
+
+    Region:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Region ID
+          example: 1
+        name:
+          type: string
+          maxLength: 100
+          description: Region name (state or union territory)
+          example: "Andhra Pradesh"
+        code:
+          type: string
+          maxLength: 10
+          nullable: true
+          description: Region code (state code)
+          example: "AP"
+        is_active:
+          type: boolean
+          description: Whether the region is active
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when region was created
+          example: "2025-12-02T10:00:00+00:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when region was last updated
+          example: "2025-12-02T10:00:00+00:00"
+
+    RegionListResponse:
+      type: object
+      required:
+        - success
+        - regions
+      properties:
+        success:
+          type: boolean
+          example: true
+        regions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Region'
+
+    ToggleUserStatusResponse:
+      type: object
+      required:
+        - success
+        - message
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "User status updated successfully"
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+              example: 2
+            name:
+              type: string
+              example: "John Doe"
+            email:
+              type: string
+              format: email
+              example: "john@example.com"
+            role_id:
+              type: integer
+              format: int64
+              example: 2
+            role_name:
+              type: string
+              example: "Reader"
+            region_id:
+              type: integer
+              format: int64
+              nullable: true
+              example: 1
+            region_name:
+              type: string
+              nullable: true
+              example: "Maharashtra"
+            is_active:
+              type: boolean
+              example: false
+            created_at:
+              type: string
+              format: date-time
+              example: "2025-12-01T10:00:00+00:00"
+            updated_at:
+              type: string
+              format: date-time
+              example: "2025-12-02T12:00:00+00:00"
+
+    ToggleCategoryStatusResponse:
+      type: object
+      required:
+        - success
+        - message
+        - category
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Category status updated successfully"
+        category:
+          $ref: '#/components/schemas/StoryCategory'
 
   securitySchemes:
     BearerAuth:

@@ -46,5 +46,14 @@ class StoryCategory extends Model
         return $this->belongsToMany(User::class, 'reader_category_access', 'category_id', 'user_id')
             ->withTimestamps();
     }
+
+    /**
+     * Get the regions assigned to this category.
+     */
+    public function regions()
+    {
+        return $this->belongsToMany(Region::class, 'category_regions', 'category_id', 'region_id')
+            ->withTimestamps();
+    }
 }
 

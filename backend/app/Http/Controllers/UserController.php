@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\PermissionHelper;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,16 +35,20 @@ class UserController extends Controller
                 return $this->errorResponse('Super admin role not found', 404);
             }
 
-            // Get all users except super admins, with their roles
+            // Get all users except super admins, with their roles and regions
             $users = DB::table('users')
-                ->join('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('users.role_id', '!=', $superAdminRoleId)
                 ->select(
                     'users.id',
                     'users.name',
                     'users.email',
                     'users.role_id',
+                    'users.region_id',
                     'roles.role_name',
+                    'regions.name as region_name',
+                    'users.is_active',
                     'users.created_at',
                     'users.updated_at'
                 )
@@ -78,6 +83,7 @@ class UserController extends Controller
             // Validate request
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255',
+                'region_id' => 'nullable|exists:regions,id',
                 'email' => 'required|email|max:255|unique:users,email',
                 'password' => 'required|string|min:1',
                 'role_id' => 'required|integer|exists:roles,id',
@@ -103,18 +109,27 @@ class UserController extends Controller
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
                 'role_id' => $request->role_id,
+                'region_id' => $request->region_id ?? null,
             ]);
 
-            // Get user with role
+            // If user has region and can post stories, grant access to categories in that region
+            if ($user->region_id && PermissionHelper::canPostStories($user)) {
+                $this->grantRegionBasedCategoryAccess($user);
+            }
+
+            // Get user with role and region
             $userWithRole = DB::table('users')
-                ->join('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('users.id', $user->id)
                 ->select(
                     'users.id',
                     'users.name',
                     'users.email',
                     'users.role_id',
+                    'users.region_id',
                     'roles.role_name',
+                    'regions.name as region_name',
                     'users.created_at',
                     'users.updated_at'
                 )
@@ -150,6 +165,7 @@ class UserController extends Controller
             // Validate request
             $validator = Validator::make($request->all(), [
                 'role_id' => 'required|integer|exists:roles,id',
+                'region_id' => 'nullable|integer|exists:regions,id',
             ]);
 
             if ($validator->fails()) {
@@ -183,11 +199,18 @@ class UserController extends Controller
 
             // Update role
             $user->role_id = $request->role_id;
+            
+            // Update region if provided
+            if ($request->has('region_id')) {
+                $user->region_id = $request->region_id ?: null;
+            }
+            
             $user->save();
 
-            // Get updated user with role
+            // Get updated user with role and region
             $userWithRole = DB::table('users')
-                ->join('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('users.id', $user->id)
                 ->select(
                     'users.id',
@@ -195,6 +218,8 @@ class UserController extends Controller
                     'users.email',
                     'users.role_id',
                     'roles.role_name',
+                    'users.region_id',
+                    'regions.name as region_name',
                     'users.created_at',
                     'users.updated_at'
                 )
@@ -212,6 +237,71 @@ class UserController extends Controller
 
             return $this->errorResponse(
                 'An error occurred while updating user role',
+                500
+            );
+        }
+    }
+
+    /**
+     * Toggle user active status
+     * 
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function toggleStatus(int $id): JsonResponse
+    {
+        try {
+            // Find user
+            $user = User::find($id);
+            if (!$user) {
+                return $this->errorResponse('User not found', 404);
+            }
+
+            // Check if user is super admin
+            $superAdminRoleId = DB::table('roles')
+                ->where('role_name', 'Super admin')
+                ->value('id');
+
+            if ($user->role_id == $superAdminRoleId) {
+                return $this->errorResponse('Cannot deactivate Super admin user', 403);
+            }
+
+            // Toggle status (default to true if column doesn't exist yet)
+            $currentStatus = $user->is_active ?? true;
+            $user->is_active = !$currentStatus;
+            $user->save();
+
+            // Get updated user with role and region
+            $userWithRole = DB::table('users')
+                ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
+                ->where('users.id', $user->id)
+                ->select(
+                    'users.id',
+                    'users.name',
+                    'users.email',
+                    'users.role_id',
+                    'roles.role_name',
+                    'users.region_id',
+                    'regions.name as region_name',
+                    'users.is_active',
+                    'users.created_at',
+                    'users.updated_at'
+                )
+                ->first();
+
+            return $this->successResponse([
+                'message' => 'User status updated successfully',
+                'user' => $userWithRole,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error toggling user status', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse(
+                'An error occurred while updating user status',
                 500
             );
         }
@@ -302,6 +392,53 @@ class UserController extends Controller
             'success' => true,
             ...$data,
         ], $statusCode);
+    }
+
+    /**
+     * Grant region-based category access to a user
+     * 
+     * @param User $user
+     * @return void
+     */
+    private function grantRegionBasedCategoryAccess(User $user): void
+    {
+        if (!$user->region_id) {
+            return;
+        }
+
+        // Get all categories assigned to user's region
+        $categoryIds = DB::table('category_regions')
+            ->where('region_id', $user->region_id)
+            ->pluck('category_id')
+            ->toArray();
+
+        if (empty($categoryIds)) {
+            return;
+        }
+
+        // Grant access (insert only if not exists)
+        $timestamp = date('Y-m-d H:i:s');
+        $accessData = [];
+        foreach ($categoryIds as $categoryId) {
+            // Check if access already exists
+            $exists = DB::table('reader_category_access')
+                ->where('user_id', $user->id)
+                ->where('category_id', $categoryId)
+                ->exists();
+
+            if (!$exists) {
+                $accessData[] = [
+                    'user_id' => $user->id,
+                    'category_id' => $categoryId,
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ];
+            }
+        }
+
+        if (!empty($accessData)) {
+            DB::table('reader_category_access')->insert($accessData);
+        }
     }
 
     /**
