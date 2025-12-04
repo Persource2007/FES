@@ -43,6 +43,7 @@ export const API_ENDPOINTS = {
   // Story endpoints
   STORIES: {
     PUBLISHED: '/api/stories/published', // Public endpoint
+    GET: (id) => `/api/stories/${id}`, // Public endpoint - get single story
     CREATE: '/api/stories',
     PENDING: '/api/stories/pending',
     PENDING_COUNT: '/api/stories/pending/count',

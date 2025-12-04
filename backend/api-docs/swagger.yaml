@@ -1404,6 +1404,62 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /api/stories/{id}:
+    get:
+      tags:
+        - Stories
+      summary: Get a single published story by ID (Public)
+      description: |
+        Retrieves a single published story by its ID. This is a public endpoint and does not require authentication.
+        
+        Returns the full story details including author, category, and region information.
+      operationId: getPublishedStory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Story ID
+          example: 1
+      responses:
+        '200':
+          description: Successfully retrieved the story
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetStoryResponse'
+              example:
+                success: true
+                story:
+                  id: 1
+                  title: "Saving the western ghats forest"
+                  content: "A tribal community's fight to protect their ancestral woodland..."
+                  status: "published"
+                  created_at: "2025-12-01T10:00:00+00:00"
+                  published_at: "2025-12-01T12:00:00+00:00"
+                  author_name: "John Doe"
+                  category_id: 1
+                  category_name: "Forest Conservation"
+                  region_id: 1
+                  region_name: "Maharashtra"
+                  region_code: "MH"
+        '404':
+          description: Published story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Published story not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     put:
       tags:
         - Stories
@@ -1623,24 +1679,6 @@ components:
           example: "Login successful"
         user:
           $ref: '#/components/schemas/UserWithRole'
-
-    User:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-          description: User ID
-          example: 1
-        email:
-          type: string
-          format: email
-          description: User email address
-          example: "vyom@example.com"
-        name:
-          type: string
-          description: User full name
-          example: "Vyom"
 
     UserWithRole:
       type: object
@@ -2215,7 +2253,22 @@ components:
           format: date-time
           nullable: true
           description: Publication timestamp
-          example: "2025-12-02T11:00:00+00:00"
+        region_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Region ID associated with the story's category
+          example: 1
+        region_name:
+          type: string
+          nullable: true
+          description: Region name (state or union territory) associated with the story's category
+          example: "Maharashtra"
+        region_code:
+          type: string
+          nullable: true
+          description: Region code (state code) associated with the story's category
+          example: "MH"
         approved_at:
           type: string
           format: date-time
@@ -2227,6 +2280,18 @@ components:
           nullable: true
           description: Rejection reason (if rejected)
           example: "Content does not meet editorial guidelines"
+
+    GetStoryResponse:
+      type: object
+      required:
+        - success
+        - story
+      properties:
+        success:
+          type: boolean
+          example: true
+        story:
+          $ref: '#/components/schemas/Story'
 
     PublishedStoriesResponse:
       type: object

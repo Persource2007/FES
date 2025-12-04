@@ -29,7 +29,8 @@ class StoryController extends Controller
             $stories = DB::table('stories')
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
-                ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
+                ->leftJoin('category_regions', 'story_categories.id', '=', 'category_regions.category_id')
+                ->leftJoin('regions', 'category_regions.region_id', '=', 'regions.id')
                 ->where('stories.status', 'published')
                 ->select(
                     'stories.id',
@@ -39,18 +40,28 @@ class StoryController extends Controller
                     'stories.created_at',
                     'stories.published_at',
                     'users.name as author_name',
-                    'users.region_id',
                     'story_categories.id as category_id',
                     'story_categories.name as category_name',
+                    'regions.id as region_id',
                     'regions.name as region_name',
                     'regions.code as region_code'
                 )
                 ->orderBy('stories.published_at', 'desc')
                 ->get();
 
+            // If a category has multiple regions, we'll get duplicate stories
+            // Group by story ID and take the first region (or handle multiple regions if needed)
+            $uniqueStories = [];
+            foreach ($stories as $story) {
+                $storyId = $story->id;
+                if (!isset($uniqueStories[$storyId])) {
+                    $uniqueStories[$storyId] = $story;
+                }
+            }
+
             return $this->successResponse([
-                'stories' => $stories,
-                'count' => count($stories),
+                'stories' => array_values($uniqueStories),
+                'count' => count($uniqueStories),
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching published stories', [
@@ -60,6 +71,58 @@ class StoryController extends Controller
 
             return $this->errorResponse(
                 'An error occurred while fetching stories',
+                500
+            );
+        }
+    }
+
+    /**
+     * Get a single published story by ID (Public endpoint)
+     * 
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function getPublishedStory(int $id): JsonResponse
+    {
+        try {
+            $story = DB::table('stories')
+                ->join('users', 'stories.user_id', '=', 'users.id')
+                ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
+                ->leftJoin('category_regions', 'story_categories.id', '=', 'category_regions.category_id')
+                ->leftJoin('regions', 'category_regions.region_id', '=', 'regions.id')
+                ->where('stories.id', $id)
+                ->where('stories.status', 'published')
+                ->select(
+                    'stories.id',
+                    'stories.title',
+                    'stories.content',
+                    'stories.status',
+                    'stories.created_at',
+                    'stories.published_at',
+                    'users.name as author_name',
+                    'story_categories.id as category_id',
+                    'story_categories.name as category_name',
+                    'regions.id as region_id',
+                    'regions.name as region_name',
+                    'regions.code as region_code'
+                )
+                ->first();
+
+            if (!$story) {
+                return $this->errorResponse('Published story not found', 404);
+            }
+
+            return $this->successResponse([
+                'story' => $story,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching single published story', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse(
+                'An error occurred while fetching the story',
                 500
             );
         }

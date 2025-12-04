@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   FaArrowRight,
   FaUser,
@@ -8,10 +8,12 @@ import {
 import apiClient from '../utils/api'
 import { API_ENDPOINTS } from '../utils/constants'
 import { formatDate } from '../utils/dateFormat'
+import { generateSlug } from '../utils/slug'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 
 function PublicStories() {
+  const navigate = useNavigate()
   const [stories, setStories] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedStory, setSelectedStory] = useState(null)
@@ -105,7 +107,10 @@ function PublicStories() {
                       {truncateContent(story.content)}
                     </p>
                     <button
-                      onClick={() => setSelectedStory(story)}
+                      onClick={() => {
+                        const slug = `${story.id}-${generateSlug(story.title)}`
+                        navigate(`/stories/${slug}`)
+                      }}
                       className="flex items-center gap-2 text-slate-700 font-medium hover:text-slate-900 transition-colors"
                     >
                       Read more

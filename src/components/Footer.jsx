@@ -11,6 +11,14 @@ function Footer() {
   return (
     <footer className="bg-green-900 text-white py-6">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Logo */}
+        <div className="mb-6 flex justify-start">
+          <img 
+            src="/images/fes-logo-white.svg" 
+            alt="FES Stories" 
+            className="h-12 w-auto"
+          />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           {/* About */}
           <div>

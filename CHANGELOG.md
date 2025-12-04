@@ -617,3 +617,215 @@ When making changes to the project:
 
 **Last Updated:** December 3, 2025
 
+---
+
+### December 4, 2025
+
+#### Interactive India Map Implementation
+
+**File: `src/components/IndiaMap.jsx`** (NEW)
+- Created interactive India map component - Uses `react-simple-maps` library for map rendering
+- State marker rendering - Displays markers for states with published stories
+- Tooltip functionality - Shows state name and story count on marker hover
+- Click handlers - Filters stories by state when marker is clicked
+- Error handling - Fallback display if map fails to load
+- GeoJSON integration - Attempted to use external GeoJSON for map outline (later replaced with SVG)
+
+**File: `src/components/IndiaMapSVG.jsx`** (NEW)
+- Created SVG-based India map component - Direct SVG rendering for reliable map display
+- Accurate state coordinates - Updated with precise geographic center coordinates for all Indian states
+- Coordinate conversion - Implemented conversion from latitude/longitude to SVG viewBox (0-1000) coordinate system
+- Marker positioning - Markers positioned at accurate geographic centers of states
+- Interactive markers - Clickable markers with tooltips showing state name and story count
+- External SVG integration - Uses `public/india-map.svg` file for map outline
+- State matching logic - Handles exact and partial state name matching for region mapping
+
+**File: `src/pages/Home.jsx`**
+- Integrated India map component - Added interactive map section to home page
+- Story filtering by state - Implemented `handleStateClick` to filter stories by selected state/region
+- Map display section - Added map container with proper styling and responsive layout
+- Stories by region grouping - Groups stories by region for map marker display
+
+**File: `public/india-map.svg`** (NEW)
+- Added India map SVG file - High-quality SVG map of India with all states and union territories
+- Proper viewBox configuration - Configured for 1000x1000 coordinate system
+
+#### Backend - Story Region Association Fix
+
+**File: `backend/app/Http/Controllers/StoryController.php`**
+- Fixed `getPublishedStories()` method - Corrected region association logic
+- Updated database joins - Changed from joining regions via `users.region_id` to joining via `category_regions` and `regions` tables
+- Added region fields - Now returns `region_id`, `region_name`, and `region_code` in published stories response
+- Proper category-region relationship - Stories now correctly associated with regions through their categories
+- Duplicate story handling - Added logic to handle cases where categories have multiple regions
+
+**File: `backend/api-docs/swagger.yaml`**
+- Updated Story schema - Added `region_id`, `region_name`, and `region_code` fields to Story schema
+- Documented region fields - Added descriptions and examples for region-related fields in published stories response
+
+#### Issues Resolved
+
+**Map Implementation:**
+- ✅ Map outline not displaying - Replaced unreliable GeoJSON loading with direct SVG file integration
+- ✅ Marker positioning accuracy - Updated all state coordinates using accurate geographic center points
+- ✅ Coordinate system conversion - Implemented proper conversion from lat/lon to SVG coordinate system
+- ✅ Story grouping by region - Fixed incorrect grouping where all stories appeared under single state
+
+**Backend - Story Region Association:**
+- ✅ Stories incorrectly grouped - Fixed query to use category-region relationship instead of user region
+- ✅ Region information missing - Added region_id, region_name, and region_code to published stories response
+- ✅ API documentation - Updated Swagger documentation to reflect new region fields in Story schema
+
+### December 4, 2025
+
+#### Frontend - Story Detail Page Map Improvements
+
+**File: `src/pages/StoryDetail.jsx`**
+- Simplified map container structure - Removed unnecessary nested divs, kept single square container
+- Reduced container size - Changed from `h-96 lg:h-[500px]` to square aspect with `max-w-lg` (512px)
+- Removed bottom padding - Changed from `py-12` to `pt-12` to eliminate bottom white space
+- Removed section wrapper - Kept only `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8` container for cleaner structure
+- Made map non-interactive - Disabled zoom, pan, and click interactions on story detail page
+- Removed legend - Hidden legend component on story detail page for cleaner appearance
+
+**File: `src/components/IndiaMapSVG.jsx`**
+- Individual state file loading - Loads separate state JSON files from `/public/states/` directory instead of full map
+- State name to filename mapping - Added utility functions to convert state names to filenames with proper handling of variations (Odisha/Orissa, Uttarakhand/Uttaranchal)
+- Improved scale calculation - Enhanced scale calculation for square containers with better fitting algorithm
+- Optimized map sizing - Increased map size from 448px to 512px with improved scale calculation (300-2000 range)
+- Locked zoom for single state view - Prevents zoom/pan when displaying individual states on story detail page
+- Better container constraints - Added overflow hidden and proper max-width/max-height constraints
+
+**File: `src/components/IndiaMap.jsx`**
+- Conditional rendering - Simplified structure when `showFilters` is false (story detail page)
+- Flexible container height - Uses `h-full` when filters are hidden to respect parent container
+
+**File: `public/states/` (NEW DIRECTORY)**
+- Extracted individual state files - Created separate JSON files for each Indian state/territory
+- 36 state files created - Each state stored as individual GeoJSON FeatureCollection
+- Filename format - Uses kebab-case (e.g., `andhra-pradesh.json`, `tamil-nadu.json`)
+- Faster loading - Story detail page now loads only relevant state file instead of full India map
+
+**File: `scripts/extract-states.js` (NEW)**
+- State extraction script - Utility script to extract individual states from main GeoJSON file
+- ES module format - Uses modern ES6 import/export syntax
+- Automatic filename generation - Converts state names to URL-friendly filenames
+
+#### Frontend - Story Detail Page Implementation
+
+**File: `src/pages/StoryDetail.jsx` (NEW)**
+- Created dedicated story detail page - Full-featured page for displaying individual stories
+- URL structure - Uses slug-based routing: `/stories/{id}-{title-slug}`
+- Story header section - Displays title, author, category, region, and publication date
+- Social sharing buttons - Facebook, Twitter, LinkedIn, and WhatsApp sharing functionality
+- Content parsing - Automatically converts YouTube URLs to embedded videos and image URLs to img tags
+- Interactive map section - Shows story location on India map (only the story's state)
+- Commenting section - Text and audio comment submission (UI ready, backend pending)
+- Audio recording - Browser-based audio recording with playback functionality
+- Responsive design - Mobile-friendly layout with proper spacing and typography
+- Error handling - Graceful error states for invalid story IDs or network errors
+- Loading states - Spinner and loading messages during data fetch
+
+**File: `src/utils/slug.js` (NEW)**
+- Slug generation utility - `generateSlug()` function for URL-friendly text conversion
+- Story ID extraction - `getStoryIdFromSlug()` function to extract story ID from slug format
+- Slug format - Uses pattern: `{id}-{title-slug}` for SEO-friendly URLs
+- Character sanitization - Removes special characters, handles spaces and hyphens properly
+
+**File: `src/App.jsx`**
+- Added story detail route - New route: `/stories/:slug` pointing to `StoryDetail` component
+- Route integration - Integrated with existing routing structure
+
+**File: `src/pages/Home.jsx`**
+- Map marker click handler - Added `handleStoryClick` function to navigate to story detail pages
+- Story navigation - Clicking markers with single story navigates to detail page
+- Slug generation - Uses `generateSlug` utility for URL generation
+- Import updates - Added `useNavigate` and `generateSlug` imports
+
+**File: `src/pages/PublicStories.jsx`**
+- Updated "Read more" links - Changed from modal to navigation to story detail pages
+- Removed modal logic - Simplified component by removing story modal state and UI
+- Link integration - Uses React Router `Link` component for navigation
+
+**File: `src/components/IndiaMap.jsx`**
+- Added `onStoryClick` prop - Passes story click handler to `IndiaMapSVG` component
+- Prop forwarding - Forwards `onStoryClick` to child component
+
+**File: `src/components/IndiaMapSVG.jsx`**
+- Map marker click functionality - Markers now navigate to story detail pages when clicked
+- Single story navigation - Clicking marker with single story navigates directly to that story
+- Multiple stories handling - Clicking marker with multiple stories filters by state
+- Story data in markers - Markers now include full story data from `storiesByRegion`
+- Map size adjustments - Reduced default map scale from 1200 to 650-750 range
+- Scale calculation - Adjusted scale calculation to produce smaller default map size
+- Improved tooltip - Enhanced tooltip to show story titles with clickable links (up to 3 stories)
+- Coordinate conversion - Proper conversion from SVG coordinates to lat/lon for markers
+
+**File: `src/utils/constants.js`**
+- Added `STORIES.GET(id)` endpoint - New endpoint constant for fetching single story: `/api/stories/{id}`
+- Endpoint integration - Added to existing `STORIES` endpoint object
+
+#### Backend - Single Story Endpoint
+
+**File: `backend/app/Http/Controllers/StoryController.php`**
+- Added `getPublishedStory(int $id)` method - New public endpoint for fetching single published story
+- Database joins - Joins users, story_categories, category_regions, and regions tables
+- Region association - Correctly fetches region information via category-region relationship
+- Error handling - Returns 404 if story not found or not published
+- Response format - Returns story object with author, category, and region details
+
+**File: `backend/routes/api.php`**
+- Route ordering fix - Reordered story routes to prevent shadowing
+- Specific routes first - Moved `/pending`, `/pending/count`, `/approved/all`, etc. before `/{id}` route
+- Added GET route - New route: `GET /api/stories/{id}` for single story retrieval
+- Route documentation - Added comments explaining route ordering importance
+
+**File: `backend/api-docs/swagger.yaml`**
+- Added GET `/api/stories/{id}` endpoint - Documented new public endpoint for single story
+- GetStoryResponse schema - Added new response schema for single story endpoint
+- Request/response examples - Added examples for story retrieval
+- Error responses - Documented 404 and 500 error responses
+
+#### Issues Resolved
+
+**Story Detail Page:**
+- ✅ Story navigation - Implemented clickable map markers to navigate to story detail pages
+- ✅ Slug-based URLs - Created SEO-friendly URLs using story ID and title slug
+- ✅ Content rendering - Automatic parsing and rendering of YouTube videos and images
+- ✅ Map integration - Story detail page shows interactive map with story location
+- ✅ Social sharing - Implemented sharing buttons for major social media platforms
+
+**Backend API:**
+- ✅ Route shadowing - Fixed route ordering issue where `/pending` was shadowed by `/{id}`
+- ✅ Single story endpoint - Added new endpoint for fetching individual published stories
+- ✅ API documentation - Updated Swagger docs with new endpoint and schema
+
+**Map Improvements:**
+- ✅ Map size optimization - Reduced default map scale for better viewport fit
+- ✅ Marker click behavior - Single story markers navigate directly to story page
+- ✅ Multiple story handling - Markers with multiple stories filter by state
+
+**Last Updated:** December 4, 2025 (Map improvements added)
+
+---
+
+### December 4, 2025
+
+#### Frontend - Public Stories Page Navigation Update
+
+**File: `src/pages/PublicStories.jsx`**
+- Updated "Read More" button functionality - Changed from opening a modal to navigating to story detail page
+- Added navigation using React Router - Uses `useNavigate` hook to navigate to `/stories/{id}-{title-slug}`
+- Imported `generateSlug` utility - For creating URL-friendly slugs from story titles
+- Improved user experience - Users can now bookmark and share direct links to individual stories
+
+#### Backend - Database Migration
+
+**File: `backend/database/migrations/2024_12_04_000001_remove_location_fields_from_stories_table.php` (NEW)**
+- Created migration to remove location fields - Removes `address`, `latitude`, and `longitude` columns from stories table
+- Removed location index - Drops `idx_stories_location` index
+- Includes rollback functionality - `down()` method allows reverting the migration if needed
+- Safe column dropping - Checks for column existence before attempting to drop
+
+**Last Updated:** December 4, 2025
+

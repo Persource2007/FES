@@ -335,7 +335,7 @@ function Sidebar({ user, onLogout }) {
             {isOpen ? (
               <>
                 <img 
-                  src="/images/fes-logo.svg" 
+                  src="/images/fes-logo-white.svg" 
                   alt="FES Stories" 
                   className="h-8 w-auto flex-shrink-0"
                 />
@@ -346,7 +346,7 @@ function Sidebar({ user, onLogout }) {
                 <div 
                   className="h-8 w-8 flex-shrink-0 rounded-full bg-white p-1.5"
                   style={{
-                    backgroundImage: 'url(/images/fes-logo.svg)',
+                    backgroundImage: 'url(/images/fes-logo-white.svg)',
                     backgroundSize: 'contain',
                     backgroundPosition: 'center',
                     backgroundRepeat: 'no-repeat',
@@ -533,7 +533,7 @@ function Sidebar({ user, onLogout }) {
                     <div className="absolute bottom-full left-0 mb-2 w-64 bg-slate-700 text-white text-xs rounded-lg p-3 shadow-lg z-50 notranslate">
                       <p className="mb-1 font-semibold">Translation Notice</p>
                       <p className="text-slate-300">
-                        Language functionality may be limited due to Google's copyright requirement to display their banner.
+                        The logo in the sidebar might be compromised due to Google's policy to display their translation banner.
                       </p>
                       <div className="absolute bottom-0 left-4 transform translate-y-full">
                         <div className="border-4 border-transparent border-t-slate-700"></div>

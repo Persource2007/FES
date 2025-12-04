@@ -1,85 +1,15 @@
-import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  FaMapMarkerAlt,
-  FaFilter,
   FaNewspaper,
   FaBook,
   FaDownload,
   FaExternalLinkAlt,
 } from 'react-icons/fa'
-import apiClient from '../utils/api'
-import { API_ENDPOINTS } from '../utils/constants'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
+import IndiaMap from '../components/IndiaMap'
 
 function Home() {
-  const [stories, setStories] = useState([])
-  const [categories, setCategories] = useState([])
-  const [regions, setRegions] = useState([])
-  const [selectedCategory, setSelectedCategory] = useState('')
-  const [selectedRegion, setSelectedRegion] = useState('')
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchStories()
-    fetchCategories()
-    fetchRegions()
-  }, [])
-
-  const fetchStories = async () => {
-    try {
-      setLoading(true)
-      const response = await apiClient.get(API_ENDPOINTS.STORIES.PUBLISHED)
-      if (response.data.success) {
-        setStories(response.data.stories || [])
-      }
-    } catch (error) {
-      console.error('Error fetching stories:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchCategories = async () => {
-    try {
-      const response = await apiClient.get(API_ENDPOINTS.STORY_CATEGORIES.LIST)
-      if (response.data.success) {
-        setCategories(response.data.categories || [])
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-    }
-  }
-
-  const fetchRegions = async () => {
-    try {
-      const response = await apiClient.get(API_ENDPOINTS.REGIONS.LIST)
-      if (response.data.success) {
-        setRegions(response.data.regions || [])
-      }
-    } catch (error) {
-      console.error('Error fetching regions:', error)
-    }
-  }
-
-  // Filter stories based on selected category and region
-  const filteredStories = stories.filter((story) => {
-    const matchesCategory = !selectedCategory || story.category_id === parseInt(selectedCategory)
-    const matchesRegion = !selectedRegion || story.region_id === parseInt(selectedRegion)
-    return matchesCategory && matchesRegion
-  })
-
-  // Group stories by region for map markers
-  const storiesByRegion = filteredStories.reduce((acc, story) => {
-    if (story.region_name) {
-      if (!acc[story.region_name]) {
-        acc[story.region_name] = []
-      }
-      acc[story.region_name].push(story)
-    }
-    return acc
-  }, {})
 
   return (
     <div className="min-h-screen bg-white">
@@ -160,112 +90,8 @@ function Home() {
             </p>
           </div>
 
-          {/* Filter Controls */}
-          <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-            <div className="flex flex-col md:flex-row gap-4 items-center">
-              <div className="flex items-center gap-2 text-gray-700">
-                <FaFilter className="text-green-700" />
-                <span className="font-medium">Filters:</span>
-              </div>
-              <div className="flex-1 w-full md:w-auto">
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-500"
-                >
-                  <option value="">All Categories</option>
-                  {categories
-                    .filter((cat) => cat.is_active)
-                    .map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="flex-1 w-full md:w-auto">
-                <select
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-500"
-                >
-                  <option value="">All States</option>
-                  {regions
-                    .filter((region) => region.is_active)
-                    .map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="text-sm text-gray-600">
-                Showing {filteredStories.length} story{filteredStories.length !== 1 ? 'ies' : ''}
-              </div>
-            </div>
-          </div>
-
-          {/* Map Placeholder */}
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-            <div className="relative bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 h-96 lg:h-[600px]">
-              {/* Map Container */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <FaMapMarkerAlt className="text-6xl text-green-700 mx-auto mb-4" />
-                  <p className="text-xl font-semibold text-green-800 mb-2">
-                    Interactive India Map
-                  </p>
-                  <p className="text-gray-700 max-w-md mx-auto">
-                    [Map will display clickable markers for each state with story counts]
-                  </p>
-                  <div className="mt-6 flex flex-wrap justify-center gap-4">
-                    {Object.entries(storiesByRegion).map(([regionName, regionStories]) => (
-                      <div
-                        key={regionName}
-                        className="bg-white px-4 py-2 rounded-lg shadow-sm border border-green-200 hover:border-green-400 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <FaMapMarkerAlt className="text-green-600" />
-                          <span className="font-medium text-green-800">{regionName}</span>
-                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-semibold">
-                            {regionStories.length}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Stats */}
-          {Object.keys(storiesByRegion).length > 0 && (
-            <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-green-600">
-                <div className="text-3xl font-bold text-green-800">{filteredStories.length}</div>
-                <div className="text-sm text-gray-700 mt-1">Total Stories</div>
-              </div>
-              <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-green-600">
-                <div className="text-3xl font-bold text-green-800">
-                  {Object.keys(storiesByRegion).length}
-                </div>
-                <div className="text-sm text-gray-700 mt-1">States Covered</div>
-              </div>
-              <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-green-600">
-                <div className="text-3xl font-bold text-green-800">
-                  {new Set(filteredStories.map((s) => s.category_id)).size}
-                </div>
-                <div className="text-sm text-gray-700 mt-1">Categories</div>
-              </div>
-              <div className="bg-white rounded-lg shadow p-4 text-center border-t-4 border-green-600">
-                <div className="text-3xl font-bold text-green-800">
-                  {new Set(filteredStories.map((s) => s.author_name)).size}
-                </div>
-                <div className="text-sm text-gray-700 mt-1">Contributors</div>
-              </div>
-            </div>
-          )}
+          {/* Interactive India Map with built-in filters */}
+          <IndiaMap />
         </div>
       </section>
 

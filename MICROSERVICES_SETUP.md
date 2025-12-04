@@ -8,7 +8,7 @@ This document outlines the microservices architecture setup for FES Stories appl
 
 ```
 ┌─────────────────┐
-│   React Frontend │
+│ React Frontend  │
 └────────┬────────┘
          │
 ┌────────▼────────┐
@@ -19,13 +19,13 @@ This document outlines the microservices architecture setup for FES Stories appl
     ┌────┴────┬──────────────┐
     │         │              │
 ┌───▼───┐ ┌──▼───┐    ┌──────▼──────┐
-│Stories│ │Admin │    │Users & Auth  │
-│Service│ │Hier. │    │Service       │
-│:8001  │ │:8002 │    │:8003         │
-└───┬───┘ └──┬───┘    └──────┬───────┘
+│Stories│ │Admin │    │Users & Auth │
+│Service│ │Hier. │    │Service      │
+│:8001  │ │:8002 │    │:8003        │
+└───┬───┘ └──┬───┘    └──────┬──────┘
     │        │               │
 ┌───▼───┐ ┌──▼───┐    ┌──────▼──────┐
-│Stories│ │Regions│    │Users DB     │
+│Stories│ │Regions│   │Users DB     │
 │  DB   │ │  DB  │    │(or FES IO)  │
 └───────┘ └──────┘    └─────────────┘
 ```

@@ -57,16 +57,25 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     });
 
     // Story routes
+    // IMPORTANT: Specific routes must come before variable routes to avoid shadowing
     $router->group(['prefix' => 'stories'], function () use ($router) {
-        $router->get('/published', 'StoryController@getPublishedStories'); // Public endpoint
-        $router->post('/', 'StoryController@store');
+        // Public endpoints
+        $router->get('/published', 'StoryController@getPublishedStories');
+        
+        // Specific routes (must be before /{id})
         $router->get('/pending', 'StoryController@getPendingStories');
         $router->get('/pending/count', 'StoryController@getPendingCount');
-        $router->post('/{id}/approve', 'StoryController@approve');
-        $router->post('/{id}/reject', 'StoryController@reject');
-        $router->get('/reader/{userId}', 'StoryController@getReaderStories');
         $router->get('/approved/all', 'StoryController@getAllApprovedStories');
         $router->get('/approved/{adminId}', 'StoryController@getApprovedStories');
+        $router->get('/reader/{userId}', 'StoryController@getReaderStories');
+        
+        // Story actions
+        $router->post('/', 'StoryController@store');
+        $router->post('/{id}/approve', 'StoryController@approve');
+        $router->post('/{id}/reject', 'StoryController@reject');
+        
+        // Variable routes (must be last)
+        $router->get('/{id}', 'StoryController@getPublishedStory'); // Public endpoint - get single story
         $router->put('/{id}', 'StoryController@update');
         $router->delete('/{id}', 'StoryController@destroy');
     });

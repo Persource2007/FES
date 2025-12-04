@@ -7,6 +7,7 @@ import Activity from './pages/Activity'
 import Stories from './pages/Stories'
 import StoryReview from './pages/StoryReview'
 import PublicStories from './pages/PublicStories'
+import StoryDetail from './pages/StoryDetail'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/stories" element={<PublicStories />} />
+        <Route path="/stories/:slug" element={<StoryDetail />} />
         <Route path="/login" element={<Login />} />
         <Route
           path="/dashboard"
