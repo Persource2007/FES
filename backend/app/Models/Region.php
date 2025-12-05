@@ -32,7 +32,7 @@ class Region extends Model
     ];
 
     /**
-     * Get the users (readers) in this region.
+     * Get the users (writers) in this region.
      */
     public function users()
     {

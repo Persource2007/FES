@@ -23,6 +23,15 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     // $router->post('/auth/register', 'AuthController@register');
     // $router->post('/auth/logout', 'AuthController@logout');
 
+    // Organization management routes (for super admin)
+    $router->group(['prefix' => 'organizations'], function () use ($router) {
+        $router->get('/', 'OrganizationController@index');
+        $router->post('/', 'OrganizationController@store');
+        $router->put('/{id}', 'OrganizationController@update');
+        $router->patch('/{id}/toggle-status', 'OrganizationController@toggleStatus');
+        $router->delete('/{id}', 'OrganizationController@destroy');
+    });
+
     // User management routes (for super admin)
     $router->group(['prefix' => 'users'], function () use ($router) {
         $router->get('/', 'UserController@index');
@@ -51,9 +60,9 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->put('/{id}', 'StoryCategoryController@update');
         $router->patch('/{id}/toggle-status', 'StoryCategoryController@toggleStatus');
         $router->delete('/{id}', 'StoryCategoryController@destroy');
-        $router->get('/readers', 'StoryCategoryController@getReadersWithAccess');
-        $router->get('/readers/{userId}', 'StoryCategoryController@getReaderCategories');
-        $router->put('/readers/{userId}/access', 'StoryCategoryController@updateReaderAccess');
+        $router->get('/writers', 'StoryCategoryController@getWritersWithAccess');
+        $router->get('/writers/{userId}', 'StoryCategoryController@getWriterCategories');
+        $router->put('/writers/{userId}/access', 'StoryCategoryController@updateWriterAccess');
     });
 
     // Story routes
@@ -67,7 +76,7 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->get('/pending/count', 'StoryController@getPendingCount');
         $router->get('/approved/all', 'StoryController@getAllApprovedStories');
         $router->get('/approved/{adminId}', 'StoryController@getApprovedStories');
-        $router->get('/reader/{userId}', 'StoryController@getReaderStories');
+        $router->get('/writer/{userId}', 'StoryController@getWriterStories');
         
         // Story actions
         $router->post('/', 'StoryController@store');

@@ -35,9 +35,10 @@ class UserController extends Controller
                 return $this->errorResponse('Super admin role not found', 404);
             }
 
-            // Get all users except super admins, with their roles and regions
+            // Get all users except super admins, with their roles, organizations, and regions
             $users = DB::table('users')
                 ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('organizations', 'users.organization_id', '=', 'organizations.id')
                 ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('users.role_id', '!=', $superAdminRoleId)
                 ->select(
@@ -45,8 +46,10 @@ class UserController extends Controller
                     'users.name',
                     'users.email',
                     'users.role_id',
+                    'users.organization_id',
                     'users.region_id',
                     'roles.role_name',
+                    'organizations.name as organization_name',
                     'regions.name as region_name',
                     'users.is_active',
                     'users.created_at',
@@ -83,7 +86,7 @@ class UserController extends Controller
             // Validate request
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255',
-                'region_id' => 'nullable|exists:regions,id',
+                'organization_id' => 'required|integer|exists:organizations,id',
                 'email' => 'required|email|max:255|unique:users,email',
                 'password' => 'required|string|min:1',
                 'role_id' => 'required|integer|exists:roles,id',
@@ -103,23 +106,34 @@ class UserController extends Controller
                 return $this->errorResponse('Cannot create Super admin user', 403);
             }
 
-            // Create user
+            // Get organization's region_id
+            $organization = DB::table('organizations')
+                ->where('id', $request->organization_id)
+                ->first();
+
+            if (!$organization) {
+                return $this->errorResponse('Organization not found', 404);
+            }
+
+            // Create user with organization_id and set region_id from organization
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
                 'role_id' => $request->role_id,
-                'region_id' => $request->region_id ?? null,
+                'organization_id' => $request->organization_id,
+                'region_id' => $organization->region_id, // Set region from organization
             ]);
 
-            // If user has region and can post stories, grant access to categories in that region
-            if ($user->region_id && PermissionHelper::canPostStories($user)) {
-                $this->grantRegionBasedCategoryAccess($user);
+            // If user has organization and can post stories, grant access to categories for that organization
+            if ($user->organization_id && PermissionHelper::canPostStories($user)) {
+                $this->grantOrganizationBasedCategoryAccess($user);
             }
 
-            // Get user with role and region
+            // Get user with role, organization, and region
             $userWithRole = DB::table('users')
                 ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('organizations', 'users.organization_id', '=', 'organizations.id')
                 ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('users.id', $user->id)
                 ->select(
@@ -127,8 +141,10 @@ class UserController extends Controller
                     'users.name',
                     'users.email',
                     'users.role_id',
+                    'users.organization_id',
                     'users.region_id',
                     'roles.role_name',
+                    'organizations.name as organization_name',
                     'regions.name as region_name',
                     'users.created_at',
                     'users.updated_at'
@@ -162,10 +178,18 @@ class UserController extends Controller
     public function updateRole(Request $request, int $id): JsonResponse
     {
         try {
+            // Find user first to check if exists and for email validation
+            $user = User::find($id);
+            if (!$user) {
+                return $this->errorResponse('User not found', 404);
+            }
+
             // Validate request
             $validator = Validator::make($request->all(), [
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|max:255|unique:users,email,' . $id,
                 'role_id' => 'required|integer|exists:roles,id',
-                'region_id' => 'nullable|integer|exists:regions,id',
+                'organization_id' => 'required|integer|exists:organizations,id',
             ]);
 
             if ($validator->fails()) {
@@ -174,12 +198,6 @@ class UserController extends Controller
                     'message' => 'Validation failed',
                     'errors' => $validator->errors(),
                 ], 400);
-            }
-
-            // Find user
-            $user = User::find($id);
-            if (!$user) {
-                return $this->errorResponse('User not found', 404);
             }
 
             // Check if user is super admin
@@ -197,19 +215,27 @@ class UserController extends Controller
                 return $this->errorResponse('Cannot assign Super admin role', 403);
             }
 
-            // Update role
-            $user->role_id = $request->role_id;
-            
-            // Update region if provided
-            if ($request->has('region_id')) {
-                $user->region_id = $request->region_id ?: null;
+            // Get organization and update organization_id and region_id
+            $organization = DB::table('organizations')
+                ->where('id', $request->organization_id)
+                ->first();
+
+            if (!$organization) {
+                return $this->errorResponse('Organization not found', 404);
             }
-            
+
+            // Update user fields
+            $user->name = $request->name;
+            $user->email = $request->email;
+            $user->role_id = $request->role_id;
+            $user->organization_id = $request->organization_id;
+            $user->region_id = $organization->region_id; // Set region from organization
             $user->save();
 
-            // Get updated user with role and region
+            // Get updated user with role, organization, and region
             $userWithRole = DB::table('users')
                 ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('organizations', 'users.organization_id', '=', 'organizations.id')
                 ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('users.id', $user->id)
                 ->select(
@@ -217,8 +243,10 @@ class UserController extends Controller
                     'users.name',
                     'users.email',
                     'users.role_id',
+                    'users.organization_id',
                     'roles.role_name',
                     'users.region_id',
+                    'organizations.name as organization_name',
                     'regions.name as region_name',
                     'users.created_at',
                     'users.updated_at'
@@ -271,9 +299,10 @@ class UserController extends Controller
             $user->is_active = !$currentStatus;
             $user->save();
 
-            // Get updated user with role and region
+            // Get updated user with role, organization, and region
             $userWithRole = DB::table('users')
                 ->leftJoin('roles', 'users.role_id', '=', 'roles.id')
+                ->leftJoin('organizations', 'users.organization_id', '=', 'organizations.id')
                 ->leftJoin('regions', 'users.region_id', '=', 'regions.id')
                 ->where('users.id', $user->id)
                 ->select(
@@ -281,8 +310,10 @@ class UserController extends Controller
                     'users.name',
                     'users.email',
                     'users.role_id',
+                    'users.organization_id',
                     'roles.role_name',
                     'users.region_id',
+                    'organizations.name as organization_name',
                     'regions.name as region_name',
                     'users.is_active',
                     'users.created_at',
@@ -395,50 +426,20 @@ class UserController extends Controller
     }
 
     /**
-     * Grant region-based category access to a user
+     * Grant organization-based category access to a user
+     * Access is now managed through category_organizations table
+     * Writers automatically get access to categories assigned to their organization
+     * This method is deprecated - no longer needed
      * 
      * @param User $user
      * @return void
      */
-    private function grantRegionBasedCategoryAccess(User $user): void
+    private function grantOrganizationBasedCategoryAccess(User $user): void
     {
-        if (!$user->region_id) {
-            return;
-        }
-
-        // Get all categories assigned to user's region
-        $categoryIds = DB::table('category_regions')
-            ->where('region_id', $user->region_id)
-            ->pluck('category_id')
-            ->toArray();
-
-        if (empty($categoryIds)) {
-            return;
-        }
-
-        // Grant access (insert only if not exists)
-        $timestamp = date('Y-m-d H:i:s');
-        $accessData = [];
-        foreach ($categoryIds as $categoryId) {
-            // Check if access already exists
-            $exists = DB::table('reader_category_access')
-                ->where('user_id', $user->id)
-                ->where('category_id', $categoryId)
-                ->exists();
-
-            if (!$exists) {
-                $accessData[] = [
-                    'user_id' => $user->id,
-                    'category_id' => $categoryId,
-                    'created_at' => $timestamp,
-                    'updated_at' => $timestamp,
-                ];
-            }
-        }
-
-        if (!empty($accessData)) {
-            DB::table('reader_category_access')->insert($accessData);
-        }
+        // Access is now managed through category_organizations table
+        // Writers automatically get access to categories assigned to their organization
+        // No need to populate reader_category_access table anymore
+        return;
     }
 
     /**

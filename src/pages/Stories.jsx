@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import {
@@ -21,7 +21,6 @@ import { addActivity } from '../utils/activity'
 import { formatDateTime } from '../utils/dateFormat'
 import {
   canManageStoryCategories,
-  canManageReaderAccess,
   canPostStories,
   canViewStories,
 } from '../utils/permissions'
@@ -29,54 +28,51 @@ import {
 function Stories() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
-  const [activeTab, setActiveTab] = useState('categories') // 'categories' or 'reader-access'
+  const [activeTab, setActiveTab] = useState('categories')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [selectedReader, setSelectedReader] = useState(null)
-  const [showReaderAccessModal, setShowReaderAccessModal] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     is_active: true,
-    region_ids: [],
+    organization_ids: [],
   })
 
-  // Reader access form state
-  const [readerAccessData, setReaderAccessData] = useState({
-    category_ids: [],
-  })
 
   const canManageCategories = canManageStoryCategories(user)
-  const canManageAccess = canManageReaderAccess(user)
   const canPost = canPostStories(user)
   const canView = canViewStories(user)
 
-  // Fetch categories
-  const {
-    data: categoriesData,
-    loading: categoriesLoading,
-    error: categoriesError,
-    execute: fetchCategories,
-  } = useApi(API_ENDPOINTS.STORY_CATEGORIES.LIST, { immediate: false })
+  // Fetch categories with user_id for organization filtering
+  const fetchCategories = async () => {
+    if (!user?.id) return
+    setCategoriesLoading(true)
+    try {
+      const response = await apiClient.get(API_ENDPOINTS.STORY_CATEGORIES.LIST, {
+        params: { user_id: user.id }
+      })
+      if (response.data.success) {
+        setCategories(response.data.categories || [])
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+      toast.error('Failed to load categories')
+    } finally {
+      setCategoriesLoading(false)
+    }
+  }
 
-  // Fetch readers with access (Super admin only)
-  const {
-    data: readersData,
-    loading: readersLoading,
-    error: readersError,
-    execute: fetchReaders,
-  } = useApi(API_ENDPOINTS.STORY_CATEGORIES.READERS, { immediate: false })
 
-  // Fetch regions
+  // Fetch organizations
   const {
-    data: regionsData,
-    loading: regionsLoading,
-    error: regionsError,
-    execute: fetchRegions,
-  } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
+    data: organizationsData,
+    loading: organizationsLoading,
+    error: organizationsError,
+    execute: fetchOrganizations,
+  } = useApi(API_ENDPOINTS.ORGANIZATIONS.LIST, { immediate: false })
 
   // Mutations
   const { execute: createCategory, loading: creating } = useMutation(
@@ -87,16 +83,17 @@ function Stories() {
   )
 
   const [categories, setCategories] = useState([])
-  const [readers, setReaders] = useState([])
-  const regions = regionsData?.regions || []
-  const [readerStories, setReaderStories] = useState([])
+  const [categoriesLoading, setCategoriesLoading] = useState(false)
+  const organizations = organizationsData?.organizations || []
+  const [writerStories, setWriterStories] = useState([])
   const [approvedStories, setApprovedStories] = useState([])
   const [editingStory, setEditingStory] = useState(null)
   const [deleteStoryConfirm, setDeleteStoryConfirm] = useState(null)
-  const [readerStoriesLoading, setReaderStoriesLoading] = useState(false)
+  const [writerStoriesLoading, setWriterStoriesLoading] = useState(false)
   const [approvedStoriesLoading, setApprovedStoriesLoading] = useState(false)
+  const isFetchingApprovedStories = useRef(false)
 
-  // Reader story submission state (moved to top level to follow Rules of Hooks)
+  // Writer story submission state (moved to top level to follow Rules of Hooks)
   const [showSubmitForm, setShowSubmitForm] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [storyFormData, setStoryFormData] = useState({
@@ -127,48 +124,56 @@ function Stories() {
     }
   }, [navigate])
 
-  const fetchReaderCategories = async () => {
+  const fetchWriterCategories = async () => {
     if (!user) return
     try {
       const response = await apiClient.get(
-        API_ENDPOINTS.STORY_CATEGORIES.READER_CATEGORIES(user.id)
+        API_ENDPOINTS.STORY_CATEGORIES.WRITER_CATEGORIES(user.id)
       )
       if (response.data.success) {
-        // Store in local state for reader view
+        // Store in local state for writer view
         setCategories(response.data.categories || [])
       }
     } catch (error) {
-      console.error('Error fetching reader categories:', error)
+      console.error('Error fetching writer categories:', error)
       toast.error('Failed to load categories')
     }
   }
 
   // Fetch reader stories
-  const fetchReaderStories = async () => {
+  const fetchWriterStories = async () => {
     if (!user) return
-    setReaderStoriesLoading(true)
+    setWriterStoriesLoading(true)
     try {
       const response = await apiClient.get(
-        API_ENDPOINTS.STORIES.READER_STORIES(user.id)
+        API_ENDPOINTS.STORIES.WRITER_STORIES(user.id)
       )
       if (response.data.success) {
-        setReaderStories(response.data.stories || [])
+        setWriterStories(response.data.stories || [])
       }
     } catch (error) {
-      console.error('Error fetching reader stories:', error)
+      console.error('Error fetching writer stories:', error)
       toast.error('Failed to load your stories')
     } finally {
-      setReaderStoriesLoading(false)
+      setWriterStoriesLoading(false)
     }
   }
 
-  // Fetch all approved stories (for admin)
-  const fetchApprovedStories = async () => {
-    if (!user) return
+  // Fetch all approved stories (for admin/editor)
+  const fetchApprovedStories = useCallback(async (force = false) => {
+    if (!user?.id) return
+    // Prevent duplicate calls if already fetching
+    if (isFetchingApprovedStories.current && !force) return
+    isFetchingApprovedStories.current = true
     setApprovedStoriesLoading(true)
     try {
       const response = await apiClient.get(
-        API_ENDPOINTS.STORIES.ALL_APPROVED_STORIES
+        API_ENDPOINTS.STORIES.ALL_APPROVED_STORIES,
+        {
+          params: {
+            user_id: user.id
+          }
+        }
       )
       if (response.data.success) {
         setApprovedStories(response.data.stories || [])
@@ -178,43 +183,50 @@ function Stories() {
       toast.error('Failed to load approved stories')
     } finally {
       setApprovedStoriesLoading(false)
+      isFetchingApprovedStories.current = false
     }
-  }
+  }, [user?.id])
 
   // Fetch data on mount
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       const canManage = canManageStoryCategories(user)
       const canPost = canPostStories(user)
-      const canManageAccess = canManageReaderAccess(user)
-      
       if (canManage) {
         fetchCategories()
-        fetchRegions()
-        if (canManageAccess) {
-          fetchReaders()
-        }
+        fetchOrganizations()
         fetchApprovedStories()
       } else if (canPost) {
-        // Fetch categories accessible by this reader
-        fetchReaderCategories()
-        fetchReaderStories()
+        // Fetch categories accessible by this writer
+        fetchWriterCategories()
+        fetchWriterStories()
       }
     }
+    // fetchApprovedStories is stable via useCallback, so we don't need it in deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [user?.id])
 
+  // Check if user is Editor
+  // User object has role.name, not role_name directly
+  const isEditor = user?.role?.name === 'Editor' || user?.role_name === 'Editor'
+  
+  // Debug: Log editor status (remove in production)
   useEffect(() => {
-    if (categoriesData?.success) {
-      setCategories(categoriesData.categories || [])
+    if (showAddModal) {
+      console.log('Modal opened - isEditor:', isEditor, 'user:', user, 'role:', user?.role, 'role.name:', user?.role?.name, 'role_name:', user?.role_name)
     }
-  }, [categoriesData])
+  }, [showAddModal, isEditor, user])
+  
+  // Auto-set organization when creating new category (not editing) for Editors
+  useEffect(() => {
+    if (isEditor && user?.organization_id && !editingCategory && showAddModal) {
+      setFormData(prev => ({
+        ...prev,
+        organization_ids: [user.organization_id]
+      }))
+    }
+  }, [isEditor, user?.organization_id, editingCategory, showAddModal])
 
-  useEffect(() => {
-    if (readersData?.success) {
-      setReaders(readersData.readers || [])
-    }
-  }, [readersData])
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -226,11 +238,17 @@ function Stories() {
 
   const handleAddCategory = async () => {
     try {
-      const response = await createCategory(formData)
+      // For Editors, ensure organization_ids includes their organization
+      const payload = { ...formData, user_id: user.id }
+      if (isEditor && user?.organization_id) {
+        payload.organization_ids = [user.organization_id]
+      }
+      
+      const response = await createCategory(payload)
       if (response?.success) {
         toast.success('Category created successfully')
         setShowAddModal(false)
-        setFormData({ name: '', description: '', is_active: true, region_ids: [] })
+        setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
         fetchCategories()
         addActivity('create', `Created story category: ${formData.name}`)
       }
@@ -258,19 +276,24 @@ function Stories() {
 
   const handleEditCategory = (category) => {
     setEditingCategory(category)
-    // Get region IDs from category.regions if available
-    const regionIds = category.regions ? category.regions.map(r => r.id) : []
+    // Get organization IDs from category.organizations if available
+    let organizationIds = category.organizations ? category.organizations.map(o => o.id) : []
     
-    // Ensure regions are loaded when editing
-    if (regions.length === 0 && !regionsLoading) {
-      fetchRegions()
+    // For Editors, force organization to their organization
+    if (isEditor && user?.organization_id) {
+      organizationIds = [user.organization_id]
+    }
+    
+    // Ensure organizations are loaded when editing
+    if (organizations.length === 0 && !organizationsLoading) {
+      fetchOrganizations()
     }
     
     setFormData({
       name: category.name,
       description: category.description || '',
       is_active: category.is_active,
-      region_ids: regionIds,
+      organization_ids: organizationIds,
     })
     setShowAddModal(true)
   }
@@ -325,15 +348,22 @@ function Stories() {
     if (!editingCategory) return
 
     try {
+      // For Editors, ensure organization_ids includes their organization
+      const payload = { ...formData }
+      if (isEditor && user?.organization_id) {
+        payload.organization_ids = [user.organization_id]
+      }
+      payload.user_id = user.id
+      
       const response = await apiClient.put(
         API_ENDPOINTS.STORY_CATEGORIES.UPDATE(editingCategory.id),
-        formData
+        payload
       )
       if (response.data.success) {
         toast.success('Category updated successfully')
         setShowAddModal(false)
         setEditingCategory(null)
-        setFormData({ name: '', description: '', is_active: true, region_ids: [] })
+        setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
         fetchCategories()
         addActivity('edit', `Updated story category: ${formData.name}`)
       }
@@ -362,62 +392,12 @@ function Stories() {
     }
   }
 
-  const handleOpenReaderAccess = (reader) => {
-    setSelectedReader(reader)
-    setReaderAccessData({
-      category_ids: reader.categories?.map((cat) => cat.id) || [],
-    })
-    setShowReaderAccessModal(true)
-  }
-
-  const handleUpdateReaderAccess = async () => {
-    if (!selectedReader) return
-
-    try {
-      const response = await apiClient.put(
-        API_ENDPOINTS.STORY_CATEGORIES.UPDATE_READER_ACCESS(selectedReader.id),
-        readerAccessData
-      )
-      if (response?.data?.success) {
-        toast.success('Reader access updated successfully')
-        setShowReaderAccessModal(false)
-        setSelectedReader(null)
-        setReaderAccessData({ category_ids: [] })
-        fetchReaders()
-        addActivity(
-          'edit',
-          `Updated category access for reader: ${selectedReader.name}`
-        )
-      }
-    } catch (error) {
-      console.error('Error updating reader access:', error)
-      toast.error(
-        error.response?.data?.message || 'Failed to update reader access'
-      )
-    }
-  }
 
   const handleLogout = () => {
     localStorage.removeItem('authToken')
     localStorage.removeItem('user')
   }
 
-  const handleToggleCategoryCheck = (categoryId) => {
-    setReaderAccessData((prev) => {
-      const categoryIds = prev.category_ids || []
-      if (categoryIds.includes(categoryId)) {
-        return {
-          ...prev,
-          category_ids: categoryIds.filter((id) => id !== categoryId),
-        }
-      } else {
-        return {
-          ...prev,
-          category_ids: [...categoryIds, categoryId],
-        }
-      }
-    })
-  }
 
   // Story submission handlers (moved to top level)
   const handleStoryInputChange = (e) => {
@@ -447,9 +427,9 @@ function Stories() {
         setShowSubmitForm(false)
         setSelectedCategory(null)
         addActivity('create', `Submitted story: ${storyFormData.title}`)
-        // Refresh reader stories list
-        if (readerTab === 'my-stories') {
-          fetchReaderStories()
+        // Refresh writer stories list
+        if (writerTab === 'my-stories') {
+          fetchWriterStories()
         }
       }
     } catch (error) {
@@ -462,7 +442,7 @@ function Stories() {
   }
 
   // Reader story tab state
-  const [readerTab, setReaderTab] = useState('submit') // 'submit' or 'my-stories'
+  const [writerTab, setWriterTab] = useState('submit') // 'submit' or 'my-stories'
 
   // Story edit form state (for admin)
   const [editStoryForm, setEditStoryForm] = useState({
@@ -536,7 +516,7 @@ function Stories() {
             <div className="px-4 sm:px-6 lg:px-8 py-4">
               <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-gray-900">Stories</h1>
-                {readerTab === 'submit' && !showSubmitForm && (
+                {writerTab === 'submit' && !showSubmitForm && (
                   <button
                     onClick={() => setShowSubmitForm(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
@@ -550,11 +530,11 @@ function Stories() {
                 <nav className="-mb-px flex space-x-8">
                   <button
                     onClick={() => {
-                      setReaderTab('submit')
+                      setWriterTab('submit')
                       setShowSubmitForm(false)
                     }}
                     className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      readerTab === 'submit'
+                      writerTab === 'submit'
                         ? 'border-slate-700 text-slate-700'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
@@ -563,11 +543,11 @@ function Stories() {
                   </button>
                   <button
                     onClick={() => {
-                      setReaderTab('my-stories')
-                      fetchReaderStories()
+                      setWriterTab('my-stories')
+                      fetchWriterStories()
                     }}
                     className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      readerTab === 'my-stories'
+                      writerTab === 'my-stories'
                         ? 'border-slate-700 text-slate-700'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
@@ -579,7 +559,7 @@ function Stories() {
             </div>
           </header>
           <div className="px-4 sm:px-6 lg:px-8 py-8">
-            {readerTab === 'submit' ? (
+            {writerTab === 'submit' ? (
               showSubmitForm ? (
                 <div className="bg-white rounded-lg shadow p-6">
                   <div className="flex items-center justify-between mb-6">
@@ -723,19 +703,19 @@ function Stories() {
                   )}
                 </div>
               )
-            ) : readerTab === 'my-stories' ? (
+            ) : writerTab === 'my-stories' ? (
               // My Stories tab
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-xl font-semibold text-gray-800 mb-4">
                   My Stories
                 </h2>
-                {readerStoriesLoading ? (
+                {writerStoriesLoading ? (
                   <p className="text-gray-500">Loading your stories...</p>
-                ) : readerStories.length === 0 ? (
+                ) : writerStories.length === 0 ? (
                   <p className="text-gray-500">You haven't submitted any stories yet.</p>
                 ) : (
                   <div className="space-y-4">
-                    {readerStories.map((story) => (
+                    {writerStories.map((story) => (
                       <div
                         key={story.id}
                         className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -805,7 +785,7 @@ function Stories() {
                 <button
                   onClick={() => {
                     setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true, region_ids: [] })
+                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
                     setShowAddModal(true)
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
@@ -832,18 +812,6 @@ function Stories() {
                 >
                   Categories
                 </button>
-                {canManageAccess && (
-                  <button
-                    onClick={() => setActiveTab('reader-access')}
-                    className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                      activeTab === 'reader-access'
-                        ? 'border-slate-700 text-slate-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Reader Access
-                  </button>
-                )}
                 <button
                   onClick={() => {
                     setActiveTab('approved-stories')
@@ -886,7 +854,7 @@ function Stories() {
                           Description
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Regions
+                          Organizations
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
@@ -914,13 +882,13 @@ function Stories() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-1">
-                              {category.regions && category.regions.length > 0 ? (
-                                category.regions.map((region) => (
+                              {category.organizations && category.organizations.length > 0 ? (
+                                category.organizations.map((org) => (
                                   <span
-                                    key={region.id}
+                                    key={org.id}
                                     className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
                                   >
-                                    {region.name}
+                                    {org.name}
                                   </span>
                                 ))
                               ) : (
@@ -969,83 +937,6 @@ function Stories() {
             </div>
           )}
 
-          {/* Reader Access Tab */}
-          {activeTab === 'reader-access' && (
-            <div className="bg-white rounded-lg shadow">
-              {readersLoading ? (
-                <div className="p-8 text-center text-gray-500">
-                  Loading readers...
-                </div>
-              ) : readers.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  No readers found.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Reader
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Accessible Categories
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {readers.map((reader) => (
-                        <tr key={reader.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <FaUsers className="text-slate-600" />
-                              <div>
-                                <div className="font-medium text-gray-900">
-                                  {reader.name}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {reader.email}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            {reader.categories && reader.categories.length > 0 ? (
-                              <div className="flex flex-wrap gap-2">
-                                {reader.categories.map((cat) => (
-                                  <span
-                                    key={cat.id}
-                                    className="px-2 py-1 text-xs bg-slate-100 text-slate-700 rounded"
-                                  >
-                                    {cat.name}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-sm text-gray-400">
-                                No access
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleOpenReaderAccess(reader)}
-                              className="text-slate-600 hover:text-slate-800 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
-                            >
-                              Manage Access
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Approved Stories Tab */}
           {activeTab === 'approved-stories' && (
@@ -1269,7 +1160,7 @@ function Stories() {
                   onClick={() => {
                     setShowAddModal(false)
                     setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true, region_ids: [] })
+                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -1305,57 +1196,85 @@ function Stories() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assign to Regions (States)
+                    Assign to Organizations
                   </label>
                   <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                    {regionsLoading ? (
-                      <p className="text-sm text-gray-500">Loading regions...</p>
-                    ) : regions.length === 0 ? (
+                    {organizationsLoading ? (
+                      <p className="text-sm text-gray-500">Loading organizations...</p>
+                    ) : organizations.length === 0 ? (
                       <div className="space-y-2">
-                        <p className="text-sm text-gray-500">No regions available</p>
+                        <p className="text-sm text-gray-500">No organizations available</p>
                         <button
                           type="button"
-                          onClick={() => fetchRegions()}
+                          onClick={() => fetchOrganizations()}
                           className="text-xs text-blue-600 hover:text-blue-800 underline"
                         >
-                          Click to load regions
+                          Click to load organizations
                         </button>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {regions.map((region) => (
-                          <label
-                            key={region.id}
-                            className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={formData.region_ids.includes(region.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    region_ids: [...prev.region_ids, region.id],
-                                  }))
-                                } else {
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    region_ids: prev.region_ids.filter(
-                                      (id) => id !== region.id
-                                    ),
-                                  }))
-                                }
-                              }}
-                              className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600"
-                            />
-                            <span className="text-sm text-gray-700">{region.name}</span>
-                          </label>
-                        ))}
+                    ) : isEditor && user?.organization_id && organizations.find(o => o.id === user.organization_id) ? (
+                      // Editor view: Show organization name clearly
+                      <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={true}
+                            disabled
+                            readOnly
+                            className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600 cursor-not-allowed opacity-60"
+                          />
+                          <span className="text-sm text-gray-700 font-medium">
+                            {organizations.find(o => o.id === user.organization_id).name}
+                          </span>
+                          <span className="text-xs text-gray-500">(Your Organization)</span>
+                        </div>
                       </div>
-                    )}
+                    ) : !isEditor ? (
+                      // Super Admin view: Show all organizations with checkboxes
+                      <div className="space-y-2">
+                        {organizations
+                          .filter(org => org.is_active)
+                          .map((org) => {
+                            const isChecked = formData.organization_ids.includes(org.id)
+                            
+                            return (
+                              <label
+                                key={org.id}
+                                className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        organization_ids: [...prev.organization_ids, org.id],
+                                      }))
+                                    } else {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        organization_ids: prev.organization_ids.filter(
+                                          (id) => id !== org.id
+                                        ),
+                                      }))
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600"
+                                />
+                                <span className="text-sm text-gray-700">{org.name}</span>
+                              </label>
+                            )
+                          })}
+                      </div>
+                    ) : null
+                  }
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
-                    Readers from selected regions will automatically get access to this category
+                    {isEditor 
+                      ? 'As an Editor, you can only create categories for your assigned organization. This field is read-only for your organization.'
+                      : 'Writers from selected organizations will automatically get access to this category'
+                    }
                   </p>
                 </div>
                 <div className="flex items-center">
@@ -1386,7 +1305,7 @@ function Stories() {
                   onClick={() => {
                     setShowAddModal(false)
                     setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true, region_ids: [] })
+                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >
@@ -1429,83 +1348,6 @@ function Stories() {
         </div>
       )}
 
-      {/* Reader Access Modal */}
-      {showReaderAccessModal && selectedReader && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Manage Access for {selectedReader.name}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowReaderAccessModal(false)
-                    setSelectedReader(null)
-                    setReaderAccessData({ category_ids: [] })
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <FaTimes />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 mb-4">
-                Select the categories this reader can post stories to:
-              </p>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {categories
-                  .filter((cat) => cat.is_active)
-                  .map((category) => (
-                    <label
-                      key={category.id}
-                      className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={readerAccessData.category_ids.includes(
-                          category.id
-                        )}
-                        onChange={() =>
-                          handleToggleCategoryCheck(category.id)
-                        }
-                        className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">
-                          {category.name}
-                        </div>
-                        {category.description && (
-                          <div className="text-sm text-gray-500">
-                            {category.description}
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-              </div>
-              <div className="flex gap-2 mt-6">
-                <button
-                  onClick={handleUpdateReaderAccess}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800"
-                >
-                  <FaCheck />
-                  Save Access
-                </button>
-                <button
-                  onClick={() => {
-                    setShowReaderAccessModal(false)
-                    setSelectedReader(null)
-                    setReaderAccessData({ category_ids: [] })
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

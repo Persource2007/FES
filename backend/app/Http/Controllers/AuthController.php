@@ -89,6 +89,26 @@ class AuthController extends Controller
                 $permissions = [];
             }
 
+            // Get organization name if user has an organization
+            $organizationName = null;
+            if ($user->organization_id) {
+                try {
+                    $organization = \Illuminate\Support\Facades\DB::table('organizations')
+                        ->where('id', $user->organization_id)
+                        ->first();
+                    if ($organization) {
+                        $organizationName = $organization->name;
+                    }
+                } catch (\Exception $e) {
+                    // If organizations table doesn't exist, organizationName will be null
+                    Log::warning('Could not fetch organization name', [
+                        'user_id' => $user->id,
+                        'organization_id' => $user->organization_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             // Return success response with user data including role and permissions
             return $this->successResponse([
                 'message' => 'Login successful',
@@ -97,6 +117,9 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'name' => $user->name,
                     'role' => $role,
+                    'role_name' => $role ? $role['name'] : null, // Add role_name for backward compatibility
+                    'organization_id' => $user->organization_id,
+                    'organization_name' => $organizationName, // Add organization_name
                     'permissions' => $permissions,
                 ],
             ]);

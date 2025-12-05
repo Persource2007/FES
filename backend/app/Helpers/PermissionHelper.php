@@ -116,12 +116,12 @@ class PermissionHelper
     }
 
     /**
-     * Check if a user can manage reader access.
+     * Check if a user can manage writer access.
      * 
      * @param User|null $user
      * @return bool
      */
-    public static function canManageReaderAccess(?User $user): bool
+    public static function canManageWriterAccess(?User $user): bool
     {
         return self::hasPermission($user, 'manage_reader_access');
     }

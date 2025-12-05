@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FaFilter, FaSearch } from 'react-icons/fa'
+import { FaFilter, FaSearch, FaTimes, FaMapMarkerAlt } from 'react-icons/fa'
 import { generateSlug } from '../utils/slug'
 import apiClient from '../utils/api'
 import { API_ENDPOINTS } from '../utils/constants'
@@ -29,6 +29,9 @@ function IndiaMap({
   const [selectedRegion, setSelectedRegion] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  
+  // Modal state for story details
+  const [selectedStory, setSelectedStory] = useState(null)
 
   // Fetch data if not provided as props and filters are shown
   useEffect(() => {
@@ -127,14 +130,21 @@ function IndiaMap({
     }
   }
 
-  // Handle story click - navigate to story detail page
+  // Handle story click - show modal instead of navigating
   const handleStoryClick = (story) => {
     if (externalOnStoryClick) {
       externalOnStoryClick(story)
     } else {
-      const slug = `${story.id}-${generateSlug(story.title)}`
-      navigate(`/stories/${slug}`)
+      // Show modal with story details
+      setSelectedStory(story)
     }
+  }
+  
+  // Truncate content for modal preview
+  const truncateContent = (content, maxLength = 200) => {
+    if (!content) return ''
+    if (content.length <= maxLength) return content
+    return content.substring(0, maxLength).trim() + '...'
   }
 
   return (
@@ -291,6 +301,73 @@ function IndiaMap({
             />
           )}
         </>
+      )}
+      
+      {/* Story Detail Modal */}
+      {selectedStory && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedStory(null)}
+        >
+          <div
+            className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FaMapMarkerAlt className="text-gray-400 text-sm" />
+                    <span className="text-sm text-gray-600">
+                      {selectedStory.region_name || 'Unknown Location'}
+                    </span>
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    {selectedStory.title}
+                  </h2>
+                  {selectedStory.category_name && (
+                    <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
+                      {selectedStory.category_name}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSelectedStory(null)}
+                  className="text-gray-400 hover:text-gray-600 text-2xl ml-4"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+              
+              {/* Content */}
+              <div className="mb-4">
+                <p className="text-gray-700 leading-relaxed">
+                  {truncateContent(selectedStory.content)}
+                </p>
+              </div>
+              
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <div className="text-sm text-gray-600">
+                  {selectedStory.author_name && (
+                    <span>By {selectedStory.author_name}</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    const slug = `${selectedStory.id}-${generateSlug(selectedStory.title)}`
+                    navigate(`/stories/${slug}`)
+                    setSelectedStory(null)
+                  }}
+                  className="text-gray-700 font-medium hover:text-gray-900 transition-colors flex items-center gap-1"
+                >
+                  Read more <span>&gt;</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

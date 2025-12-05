@@ -39,12 +39,23 @@ class StoryCategory extends Model
     ];
 
     /**
-     * Get the readers who have access to this category.
+     * Get the writers who have access to this category through their organization.
+     * Writers get access via category_organizations table.
+     * Note: This relationship is complex - use organizations() and then access users through organizations instead.
      */
-    public function readers()
+    public function writers()
     {
-        return $this->belongsToMany(User::class, 'reader_category_access', 'category_id', 'user_id')
-            ->withTimestamps();
+        // Access writers through organizations assigned to this category
+        // Use: $category->organizations()->with('users')->get() instead
+        return $this->hasManyThrough(
+            User::class,
+            Organization::class,
+            'id', // Foreign key on organizations table
+            'organization_id', // Foreign key on users table
+            'id', // Local key on story_categories table
+            'id' // Local key on organizations table
+        )->join('category_organizations', 'organizations.id', '=', 'category_organizations.organization_id')
+         ->where('category_organizations.category_id', $this->id);
     }
 
     /**
@@ -53,6 +64,15 @@ class StoryCategory extends Model
     public function regions()
     {
         return $this->belongsToMany(Region::class, 'category_regions', 'category_id', 'region_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * Get the organizations assigned to this category.
+     */
+    public function organizations()
+    {
+        return $this->belongsToMany(Organization::class, 'category_organizations', 'category_id', 'organization_id')
             ->withTimestamps();
     }
 }

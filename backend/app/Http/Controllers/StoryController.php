@@ -129,18 +129,46 @@ class StoryController extends Controller
     }
 
     /**
-     * Get pending stories for review (Super admin only)
+     * Get pending stories for review (Super admin or Editor)
+     * Editors only see stories from writers in their organization
      * 
+     * @param Request $request
      * @return JsonResponse
      */
-    public function getPendingStories(): JsonResponse
+    public function getPendingStories(Request $request): JsonResponse
     {
         try {
-            $stories = DB::table('stories')
+            // Get user making the request
+            $userId = $request->input('user_id');
+            $user = $userId ? User::find($userId) : null;
+
+            $query = DB::table('stories')
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
-                ->where('stories.status', 'pending')
-                ->select(
+                ->where('stories.status', 'pending');
+
+            // If user is Editor, filter by organization
+            if ($user) {
+                $userRole = DB::table('roles')
+                    ->where('id', $user->role_id)
+                    ->first();
+
+                if ($userRole && $userRole->role_name === 'Editor' && $user->organization_id) {
+                    // Editor can only see stories from writers in their organization
+                    $query->where('users.organization_id', $user->organization_id);
+                    
+                    // Also ensure the author is a Writer
+                    $writerRoleId = DB::table('roles')
+                        ->where('role_name', 'Writer')
+                        ->value('id');
+                    
+                    if ($writerRoleId) {
+                        $query->where('users.role_id', $writerRoleId);
+                    }
+                }
+            }
+
+            $stories = $query->select(
                     'stories.id',
                     'stories.title',
                     'stories.content',
@@ -174,15 +202,44 @@ class StoryController extends Controller
 
     /**
      * Get count of pending stories (for notification badge)
+     * Editors only see count of stories from writers in their organization
      * 
      * @return JsonResponse
      */
     public function getPendingCount(): JsonResponse
     {
         try {
-            $count = DB::table('stories')
-                ->where('status', 'pending')
-                ->count();
+            // Get user making the request from query parameter
+            $request = app('request');
+            $userId = $request->input('user_id');
+            $user = $userId ? User::find($userId) : null;
+
+            $query = DB::table('stories')
+                ->join('users', 'stories.user_id', '=', 'users.id')
+                ->where('stories.status', 'pending');
+
+            // If user is Editor, filter by organization
+            if ($user) {
+                $userRole = DB::table('roles')
+                    ->where('id', $user->role_id)
+                    ->first();
+
+                if ($userRole && $userRole->role_name === 'Editor' && $user->organization_id) {
+                    // Editor can only see stories from writers in their organization
+                    $query->where('users.organization_id', $user->organization_id);
+                    
+                    // Also ensure the author is a Writer
+                    $writerRoleId = DB::table('roles')
+                        ->where('role_name', 'Writer')
+                        ->value('id');
+                    
+                    if ($writerRoleId) {
+                        $query->where('users.role_id', $writerRoleId);
+                    }
+                }
+            }
+
+            $count = $query->count();
 
             return $this->successResponse([
                 'count' => $count,
@@ -199,7 +256,7 @@ class StoryController extends Controller
     }
 
     /**
-     * Create a new story (Reader only)
+     * Create a new story (Writer only)
      * 
      * @param Request $request
      * @return JsonResponse
@@ -239,22 +296,13 @@ class StoryController extends Controller
                 return $this->errorResponse('You do not have permission to post stories', 403);
             }
 
-            // Check if user has access to this category
-            // Access can be from:
-            // 1. Direct access (reader_category_access table)
-            // 2. Region-based access (category_regions table matching user's region)
-            $hasCategoryAccess = DB::table('reader_category_access')
-                ->where('user_id', $userId)
-                ->where('category_id', $request->category_id)
-                ->exists();
+            // Verify user is a Writer (only Writers can create stories)
+            $userRole = DB::table('roles')
+                ->where('id', $user->role_id)
+                ->first();
 
-            // Check region-based access
-            $hasRegionAccess = false;
-            if ($user->region_id) {
-                $hasRegionAccess = DB::table('category_regions')
-                    ->where('category_id', $request->category_id)
-                    ->where('region_id', $user->region_id)
-                    ->exists();
+            if (!$userRole || $userRole->role_name !== 'Writer') {
+                return $this->errorResponse('Only Writers can create stories', 403);
             }
 
             // Super admins have access to all categories
@@ -264,7 +312,17 @@ class StoryController extends Controller
 
             $isSuperAdmin = $user->role_id == $superAdminRoleId;
 
-            if (!$isSuperAdmin && !$hasCategoryAccess && !$hasRegionAccess) {
+            // Check if user has access to this category via organization
+            $hasCategoryAccess = false;
+            if ($user->organization_id) {
+                // Check if category is assigned to user's organization
+                $hasCategoryAccess = DB::table('category_organizations')
+                    ->where('category_id', $request->category_id)
+                    ->where('organization_id', $user->organization_id)
+                    ->exists();
+            }
+
+            if (!$isSuperAdmin && !$hasCategoryAccess) {
                 return $this->errorResponse('You do not have access to post in this category', 403);
             }
 
@@ -322,7 +380,7 @@ class StoryController extends Controller
     }
 
     /**
-     * Approve and publish a story (Super admin only)
+     * Approve and publish a story (Super admin or Editor from same organization)
      * 
      * @param Request $request
      * @param int $id
@@ -340,7 +398,7 @@ class StoryController extends Controller
                 return $this->errorResponse('Story is not pending approval', 400);
             }
 
-            // Get authenticated admin user (you'll need to implement authentication middleware)
+            // Get authenticated admin/editor user
             $adminUserId = $request->input('admin_user_id');
             if (!$adminUserId) {
                 return $this->errorResponse('Admin user ID is required', 400);
@@ -351,8 +409,43 @@ class StoryController extends Controller
                 return $this->errorResponse('Admin user not found', 404);
             }
 
-            // Check if user can manage story categories (super admin permission)
-            if (!PermissionHelper::canManageStoryCategories($adminUser)) {
+            // Get admin user's role
+            $adminRole = DB::table('roles')
+                ->where('id', $adminUser->role_id)
+                ->first();
+
+            // Check if user is Super admin
+            $isSuperAdmin = $adminRole && $adminRole->role_name === 'Super admin';
+            
+            // Check if user is Editor
+            $isEditor = $adminRole && $adminRole->role_name === 'Editor';
+
+            // Super admin can approve any story
+            if ($isSuperAdmin && PermissionHelper::canManageStoryCategories($adminUser)) {
+                // Allow approval
+            }
+            // Editor can only approve stories from writers in their organization
+            elseif ($isEditor && PermissionHelper::canManageStoryCategories($adminUser)) {
+                // Get the story author
+                $storyAuthor = User::find($story->user_id);
+                if (!$storyAuthor) {
+                    return $this->errorResponse('Story author not found', 404);
+                }
+
+                // Check if story author is in the same organization as the editor
+                if ($storyAuthor->organization_id !== $adminUser->organization_id) {
+                    return $this->errorResponse('You can only approve stories from writers in your organization', 403);
+                }
+
+                // Get author's role to ensure they are a Writer
+                $authorRole = DB::table('roles')
+                    ->where('id', $storyAuthor->role_id)
+                    ->first();
+
+                if (!$authorRole || $authorRole->role_name !== 'Writer') {
+                    return $this->errorResponse('You can only approve stories from Writers', 403);
+                }
+            } else {
                 return $this->errorResponse('You do not have permission to approve stories', 403);
             }
 
@@ -399,7 +492,7 @@ class StoryController extends Controller
     }
 
     /**
-     * Reject a story (Super admin only)
+     * Reject a story (Super admin or Editor from same organization)
      * 
      * @param Request $request
      * @param int $id
@@ -429,7 +522,7 @@ class StoryController extends Controller
                 return $this->errorResponse('Story is not pending approval', 400);
             }
 
-            // Get authenticated admin user
+            // Get authenticated admin/editor user
             $adminUserId = $request->input('admin_user_id');
             if (!$adminUserId) {
                 return $this->errorResponse('Admin user ID is required', 400);
@@ -440,8 +533,43 @@ class StoryController extends Controller
                 return $this->errorResponse('Admin user not found', 404);
             }
 
-            // Check if user can manage story categories
-            if (!PermissionHelper::canManageStoryCategories($adminUser)) {
+            // Get admin user's role
+            $adminRole = DB::table('roles')
+                ->where('id', $adminUser->role_id)
+                ->first();
+
+            // Check if user is Super admin
+            $isSuperAdmin = $adminRole && $adminRole->role_name === 'Super admin';
+            
+            // Check if user is Editor
+            $isEditor = $adminRole && $adminRole->role_name === 'Editor';
+
+            // Super admin can reject any story
+            if ($isSuperAdmin && PermissionHelper::canManageStoryCategories($adminUser)) {
+                // Allow rejection
+            }
+            // Editor can only reject stories from writers in their organization
+            elseif ($isEditor && PermissionHelper::canManageStoryCategories($adminUser)) {
+                // Get the story author
+                $storyAuthor = User::find($story->user_id);
+                if (!$storyAuthor) {
+                    return $this->errorResponse('Story author not found', 404);
+                }
+
+                // Check if story author is in the same organization as the editor
+                if ($storyAuthor->organization_id !== $adminUser->organization_id) {
+                    return $this->errorResponse('You can only reject stories from writers in your organization', 403);
+                }
+
+                // Get author's role to ensure they are a Writer
+                $authorRole = DB::table('roles')
+                    ->where('id', $storyAuthor->role_id)
+                    ->first();
+
+                if (!$authorRole || $authorRole->role_name !== 'Writer') {
+                    return $this->errorResponse('You can only reject stories from Writers', 403);
+                }
+            } else {
                 return $this->errorResponse('You do not have permission to reject stories', 403);
             }
 
@@ -469,12 +597,12 @@ class StoryController extends Controller
     }
 
     /**
-     * Get stories for a reader (their own stories)
+     * Get stories for a writer (their own stories)
      * 
      * @param int $userId
      * @return JsonResponse
      */
-    public function getReaderStories(int $userId): JsonResponse
+    public function getWriterStories(int $userId): JsonResponse
     {
         try {
             $user = User::find($userId);
@@ -533,12 +661,36 @@ class StoryController extends Controller
                 return $this->errorResponse('You do not have permission to view approved stories', 403);
             }
 
-            $stories = DB::table('stories')
+            // Get admin's role
+            $adminRole = DB::table('roles')
+                ->where('id', $admin->role_id)
+                ->first();
+
+            $isSuperAdmin = $adminRole && $adminRole->role_name === 'Super admin';
+            $isEditor = $adminRole && $adminRole->role_name === 'Editor';
+
+            $query = DB::table('stories')
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
                 ->where('stories.approved_by', $adminId)
-                ->where('stories.status', 'published')
-                ->select(
+                ->where('stories.status', 'published');
+
+            // If Editor, filter by organization
+            if ($isEditor && $admin->organization_id) {
+                // Editor can only see stories from writers in their organization
+                $query->where('users.organization_id', $admin->organization_id);
+                
+                // Also ensure the author is a Writer
+                $writerRoleId = DB::table('roles')
+                    ->where('role_name', 'Writer')
+                    ->value('id');
+                
+                if ($writerRoleId) {
+                    $query->where('users.role_id', $writerRoleId);
+                }
+            }
+
+            $stories = $query->select(
                     'stories.id',
                     'stories.title',
                     'stories.content',
@@ -572,20 +724,48 @@ class StoryController extends Controller
     }
 
     /**
-     * Get all approved stories by any admin (Super admin only)
+     * Get all approved stories
+     * Super admin sees all stories, Editors only see stories from writers in their organization
      * 
      * @return JsonResponse
      */
     public function getAllApprovedStories(): JsonResponse
     {
         try {
-            $stories = DB::table('stories')
+            // Get user making the request from query parameter
+            $request = app('request');
+            $userId = $request->input('user_id');
+            $user = $userId ? User::find($userId) : null;
+
+            $query = DB::table('stories')
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
                 ->leftJoin('users as approvers', 'stories.approved_by', '=', 'approvers.id')
                 ->where('stories.status', 'published')
-                ->whereNotNull('stories.approved_by')
-                ->select(
+                ->whereNotNull('stories.approved_by');
+
+            // If user is Editor, filter by organization
+            if ($user) {
+                $userRole = DB::table('roles')
+                    ->where('id', $user->role_id)
+                    ->first();
+
+                if ($userRole && $userRole->role_name === 'Editor' && $user->organization_id) {
+                    // Editor can only see stories from writers in their organization
+                    $query->where('users.organization_id', $user->organization_id);
+                    
+                    // Also ensure the author is a Writer
+                    $writerRoleId = DB::table('roles')
+                        ->where('role_name', 'Writer')
+                        ->value('id');
+                    
+                    if ($writerRoleId) {
+                        $query->where('users.role_id', $writerRoleId);
+                    }
+                }
+            }
+
+            $stories = $query->select(
                     'stories.id',
                     'stories.title',
                     'stories.content',
@@ -622,7 +802,8 @@ class StoryController extends Controller
     }
 
     /**
-     * Update a story (Super admin only)
+     * Update a story (Super admin or Editor)
+     * Editors can only edit stories from writers in their organization
      * 
      * @param Request $request
      * @param int $id
@@ -651,7 +832,7 @@ class StoryController extends Controller
                 ], 400);
             }
 
-            // Get authenticated admin user
+            // Get authenticated admin/editor user
             $adminUserId = $request->input('admin_user_id');
             if (!$adminUserId) {
                 return $this->errorResponse('Admin user ID is required', 400);
@@ -662,14 +843,47 @@ class StoryController extends Controller
                 return $this->errorResponse('Admin user not found', 404);
             }
 
-            // Check if user can manage story categories
+            // Get admin user's role
+            $adminRole = DB::table('roles')
+                ->where('id', $adminUser->role_id)
+                ->first();
+
+            // Check if user is Super admin
+            $isSuperAdmin = $adminRole && $adminRole->role_name === 'Super admin';
+            
+            // Check if user is Editor
+            $isEditor = $adminRole && $adminRole->role_name === 'Editor';
+
+            // Check permissions
             if (!PermissionHelper::canManageStoryCategories($adminUser)) {
                 return $this->errorResponse('You do not have permission to edit stories', 403);
             }
 
-            // Only allow editing published stories
-            if ($story->status !== 'published') {
-                return $this->errorResponse('Only published stories can be edited', 400);
+            // If Editor, check if story is from their organization
+            if ($isEditor) {
+                $storyAuthor = User::find($story->user_id);
+                if (!$storyAuthor) {
+                    return $this->errorResponse('Story author not found', 404);
+                }
+
+                // Check if story author is in the same organization as the editor
+                if ($storyAuthor->organization_id !== $adminUser->organization_id) {
+                    return $this->errorResponse('You can only edit stories from writers in your organization', 403);
+                }
+
+                // Get author's role to ensure they are a Writer
+                $authorRole = DB::table('roles')
+                    ->where('id', $storyAuthor->role_id)
+                    ->first();
+
+                if (!$authorRole || $authorRole->role_name !== 'Writer') {
+                    return $this->errorResponse('You can only edit stories from Writers', 403);
+                }
+            }
+
+            // Allow editing published or pending stories
+            if ($story->status !== 'published' && $story->status !== 'pending') {
+                return $this->errorResponse('Only published or pending stories can be edited', 400);
             }
 
             // Update story

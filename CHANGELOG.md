@@ -1,5 +1,28 @@
 # FES Stories - Change Log
 
+## Quick Start Commands
+
+### Frontend Development Server
+```bash
+npm run dev
+```
+Runs the React frontend on `http://localhost:3000` (or the next available port)
+
+### Backend API Server
+```bash
+cd backend
+php -S localhost:8000 -t public
+```
+Runs the Lumen backend API on `http://localhost:8000`
+
+### Swagger Documentation
+```bash
+npx swagger-ui-watcher -p 3001 backend/api-docs/swagger.yaml
+```
+Opens Swagger UI at `http://localhost:3001`
+
+---
+
 ## Technologies Used
 
 ### Frontend
@@ -827,5 +850,229 @@ When making changes to the project:
 - Includes rollback functionality - `down()` method allows reverting the migration if needed
 - Safe column dropping - Checks for column existence before attempting to drop
 
-**Last Updated:** December 4, 2025
+#### Frontend - Sidebar Logo Styling Update
+
+**File: `src/components/Sidebar.jsx`**
+- Removed white circle background from collapsed logo - Logo now displays directly without white circular background when sidebar is collapsed
+- Consistent logo display - Logo appears the same way whether sidebar is expanded or collapsed
+- Simplified collapsed logo rendering - Replaced div with background styling with direct img tag
+
+**Last Updated:** December 5, 2025
+
+---
+
+### December 5, 2025
+
+#### Backend - Organization Management Feature
+
+**File: `backend/database/migrations/2024_12_05_000001_create_organizations_table.php` (NEW)**
+- Created organizations table migration - Adds `organizations` table with `name`, `region_id`, `is_active`, and timestamps
+- Added foreign key constraint to regions table - Organizations are linked to regions
+- Added indexes for performance - Indexes on `region_id` and `is_active`
+
+**File: `backend/database/migrations/2024_12_05_000002_add_organization_id_to_users_table.php` (NEW)**
+- Added organization_id to users table - Users now belong to organizations instead of directly to regions
+- Added foreign key constraint - Links users to organizations table
+- Migration includes rollback functionality
+
+**File: `backend/database/migrations/2024_12_05_000003_assign_users_to_test_org.php` (NEW)**
+- Created default organization - Creates "Test ORG 1" organization for existing users
+- Auto-assigns all users - Assigns all existing users to the default organization
+- Updates user region_id - Sets user region_id from organization's region_id
+
+**File: `backend/app/Models/Organization.php` (NEW)**
+- Created Organization model - Eloquent model for organizations table
+- Added relationships - `region()` (belongsTo) and `users()` (hasMany) relationships
+- Added categories relationship - Many-to-many relationship with story categories
+
+**File: `backend/app/Http/Controllers/OrganizationController.php` (NEW)**
+- Created OrganizationController - Full CRUD operations for organizations
+- Added error handling - Handles cases where organizations table doesn't exist yet
+- Added validation - Validates organization name and region_id
+- Includes toggle status and delete functionality
+
+**File: `backend/routes/api.php`**
+- Added organization routes - GET, POST, PUT, PATCH, DELETE endpoints for `/api/organizations`
+- Placed before user routes - Organizations are managed before users in the API structure
+
+#### Backend - Role Management Updates
+
+**File: `backend/database/migrations/2024_12_05_000005_remove_editor_writer_flags_from_users_table.php` (NEW)**
+- Removed editor/writer flags - Drops `is_editor` and `is_writer` boolean columns from users table
+- Role-based access only - Access is now determined by role (Writer, Editor) instead of flags
+
+**File: `backend/database/migrations/2024_12_05_000006_rename_reader_to_writer_role.php` (NEW)**
+- Renamed Reader role to Writer - Updates role name in database
+- Updated permissions - Maintains all existing permissions for the renamed role
+
+**File: `backend/database/migrations/2024_12_05_000007_create_editor_role.php` (NEW)**
+- Created Editor role - New role with specific permissions
+- Added permissions - `manage_story_categories`, `post_stories`, `view_stories`, `view_activity`
+- Editors can approve and edit stories from writers in their organization
+
+#### Backend - Category Management Changes
+
+**File: `backend/database/migrations/2024_12_05_000008_create_category_organizations_table.php` (NEW)**
+- Created category_organizations pivot table - Links categories to organizations instead of regions
+- Added foreign key constraints - Links to both story_categories and organizations tables
+- Added unique constraint - Prevents duplicate category-organization assignments
+
+**File: `backend/app/Models/StoryCategory.php`**
+- Added organizations relationship - Many-to-many relationship with organizations
+- Maintains regions relationship - Kept for backward compatibility
+
+**File: `backend/app/Http/Controllers/StoryCategoryController.php`**
+- Updated index() method - Filters categories by organization for Editors, uses `organizations` relationship
+- Updated store() method - Accepts `organization_ids` instead of `region_ids`, restricts Editors to their organization
+- Updated update() method - Accepts `organization_ids`, prevents Editors from changing organization assignment
+- Created syncOrganizationBasedAccess() - Grants access to writers in assigned organizations
+- Updated getWriterCategories() - Removed direct access check, only uses organization-based access
+- Organization-based filtering - Editors can only see/edit categories from their organization
+
+**File: `backend/app/Http/Controllers/StoryController.php`**
+- Updated getPendingStories() - Accepts `user_id` parameter, filters by organization for Editors
+- Updated getPendingCount() - Accepts `user_id` parameter, filters by organization for Editors
+- Updated getAllApprovedStories() - Accepts `user_id` parameter, filters by organization for Editors
+- Updated store() - Validates that only Writers can create stories
+- Updated getApprovedStories() - Filters by organization for Editors
+- Updated update(), approve(), reject() - Organization-based filtering for Editors
+- Fixed Request injection - Uses `app('request')` for GET routes in Lumen
+
+**File: `backend/app/Http/Controllers/UserController.php`**
+- Updated to use organization_id - All user management now uses organizations instead of regions
+- Updated updateRole() - Now updates `name`, `email`, `role_id`, and `organization_id`
+- Added organization-based category access - `grantOrganizationBasedCategoryAccess()` uses organization's region
+
+#### Frontend - Organization Management
+
+**File: `src/pages/Organizations.jsx` (NEW)**
+- Created Organizations page - Full CRUD interface for managing organizations
+- Added organization table - Displays organizations with name, region, and status
+- Added create/edit modals - Form for creating and editing organizations
+- Added delete confirmation - Confirmation dialog before deleting organizations
+- Integrated with API - Uses `/api/organizations` endpoints
+- Added activity logging - Logs organization creation, updates, and deletions
+
+**File: `src/components/Sidebar.jsx`**
+- Added Organizations menu item - New menu item with building icon, positioned before Users
+- Visible to super admins only - Only super admins can access organizations
+- Updated pending count - Passes `user_id` for organization-based filtering
+
+**File: `src/App.jsx`**
+- Added organizations route - New route `/dashboard/organizations` for Organizations page
+
+**File: `src/utils/constants.js`**
+- Added ORGANIZATIONS endpoints - API endpoints for organization management
+- Updated STORIES endpoints - Updated to reflect Writer role and Editor capabilities
+
+#### Frontend - User Management Updates
+
+**File: `src/pages/Users.jsx`**
+- Replaced region selector with organization selector - Users are now assigned to organizations
+- Removed Region column from table - Region is now read-only, derived from organization
+- Updated form - Organization selection replaces direct region selection
+- Updated API calls - Uses `organization_id` instead of `region_id`
+- Updated updateRole - Sends `name`, `email`, `role_id`, and `organization_id`
+
+#### Frontend - Category Management Updates
+
+**File: `src/pages/Stories.jsx`**
+- Replaced region selector with organization selector - Categories are now assigned to organizations
+- Updated form state - Changed from `region_ids` to `organization_ids`
+- Updated API calls - Fetches and sends organizations instead of regions
+- Updated table display - Shows organizations instead of regions
+- Editor restrictions - Editors see read-only organization assignment (auto-assigned to their organization)
+- Updated fetchCategories - Passes `user_id` for organization-based filtering
+- Fixed loading state - Added `categoriesLoading` state variable
+
+#### Frontend - Story Management Updates
+
+**File: `src/pages/Stories.jsx`**
+- Updated fetchApprovedStories - Passes `user_id` parameter for organization-based filtering
+- Wrapped in useCallback - Prevents repeated API calls
+- Added useRef - Prevents duplicate fetches with `isFetchingApprovedStories`
+
+**File: `src/pages/StoryReview.jsx`**
+- Updated fetchPendingStories - Passes `user_id` parameter for organization-based filtering
+- Updated useEffect dependencies - Fixed infinite loop issue
+
+#### Frontend - Map Improvements
+
+**File: `src/components/IndiaMap.jsx`**
+- Updated filter UI - Simplified layout to match design, removed labels and headers
+- Added story detail modal - Shows story details when map pin is clicked
+- Added truncateContent utility - Truncates story content for modal preview
+- Updated handleStoryClick - Shows modal instead of navigating directly
+
+#### Documentation Updates
+
+**File: `backend/api-docs/swagger.yaml`**
+- Added Organizations tag and endpoints - Complete CRUD documentation for `/api/organizations`
+- Updated Story Categories endpoints - Added `user_id` query parameter, changed from `region_ids` to `organization_ids`
+- Updated Stories endpoints - Added `user_id` query parameters for organization-based filtering
+- Updated User endpoints - Added `organization_id` to CreateUserRequest and UpdateRoleRequest
+- Added Organization schemas - Organization, OrganizationListResponse, CreateOrganizationRequest, etc.
+- Updated StoryCategory schema - Added `organizations` array field
+- Updated UserListItem schema - Added `organization_id` and `organization_name` fields
+- Updated role references - Changed "Reader" to "Writer" throughout documentation
+- Added Editor role documentation - Documented Editor restrictions and capabilities
+
+**File: `CHANGELOG.md`**
+- Added comprehensive December 5, 2025 entry - Documented all organization, role, and category management changes
+- Documented all migrations - All 8 new migrations created today
+- Documented all bug fixes - All 7 issues resolved today
+- Documented frontend and backend changes - Complete coverage of all modifications
+
+#### Issues Resolved
+
+- ✅ Fixed writer access to categories - Writers can only see categories for their organization's region
+- ✅ Fixed Editor category access - Editors can only view/create/edit categories for their organization
+- ✅ Fixed user update issue - Name and email now update correctly
+- ✅ Fixed organization-based story visibility - Editors and Writers only see stories from their organization
+- ✅ Fixed backend infinite loop - Corrected Request injection in Lumen GET routes
+- ✅ Fixed repeated API calls - Stabilized fetchApprovedStories with useCallback and useRef
+- ✅ Fixed page loading errors - Added missing state variables and fixed region/organization references
+
+---
+
+### December 5, 2025 (Later Update)
+
+#### Database Changes
+
+**Migration: `2025_12_05_105825_drop_user_organizations_table.php`**
+- Created migration to drop `user_organizations` pivot table
+- Reverted from many-to-many to one-to-many relationship
+- Users now belong to a single organization via `users.organization_id`
+
+#### Reverted Changes
+
+**Many-to-Many Relationship Attempt (Reverted)**
+- Attempted to implement many-to-many relationship between Users and Organizations
+- Created `user_organizations` pivot table migration
+- Updated models, controllers, and frontend to support multiple organizations per user
+- Decision made to revert back to one-to-many relationship
+- All code changes reverted to use `organization_id` (single organization)
+- Migration created and executed to drop the `user_organizations` table
+- Database restored to original one-to-many structure
+
+**Files Reverted:**
+- `backend/app/Models/User.php` - Removed `organizations()` many-to-many relationship
+- `backend/app/Models/Organization.php` - Reverted `users()` to `hasMany` relationship
+- `backend/app/Http/Controllers/AuthController.php` - Reverted to single organization in login response
+- `backend/app/Http/Controllers/StoryCategoryController.php` - Removed `getUserOrganizationIds()` helper, reverted to single organization checks
+- `backend/app/Http/Controllers/StoryController.php` - Removed `getUserOrganizationIds()` helper, reverted to single organization checks
+- `backend/app/Http/Controllers/UserController.php` - Reverted to accept single `organization_id` instead of `organization_ids` array
+- `src/pages/Users.jsx` - Reverted form to single organization dropdown instead of multi-select checkboxes
+
+**Migration Files:**
+- Deleted: `2025_12_05_104607_create_user_organizations_table.php` (rejected migration)
+- Created: `2025_12_05_105825_drop_user_organizations_table.php` (executed successfully)
+
+**Current State:**
+- Users have a single `organization_id` foreign key
+- One-to-many relationship: One organization can have many users
+- All access control logic uses single organization per user
+- Database structure matches code implementation
+
+**Last Updated:** December 5, 2025
 

@@ -74,12 +74,12 @@ export function canManageStoryCategories(user) {
 }
 
 /**
- * Check if user can manage reader access
+ * Check if user can manage writer access
  * 
  * @param {Object} user - User object with permissions array
  * @returns {boolean}
  */
-export function canManageReaderAccess(user) {
+export function canManageWriterAccess(user) {
   return hasPermission(user, 'manage_reader_access')
 }
 

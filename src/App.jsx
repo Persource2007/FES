@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Organizations from './pages/Organizations'
 import Users from './pages/Users'
 import Activity from './pages/Activity'
 import Stories from './pages/Stories'
@@ -23,6 +24,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/organizations"
+          element={
+            <ProtectedRoute>
+              <Organizations />
             </ProtectedRoute>
           }
         />

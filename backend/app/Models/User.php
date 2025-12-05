@@ -27,6 +27,7 @@ class User extends Model implements AuthenticatableContract
         'password',
         'role_id',
         'region_id',
+        'organization_id',
         'is_active',
     ];
 
@@ -72,6 +73,29 @@ class User extends Model implements AuthenticatableContract
     public function region()
     {
         return $this->belongsTo(Region::class, 'region_id');
+    }
+
+    /**
+     * Get the organization that belongs to this user.
+     */
+    public function organization()
+    {
+        return $this->belongsTo(Organization::class, 'organization_id');
+    }
+
+    /**
+     * Get the user's region from their organization.
+     * Falls back to direct region_id if organization doesn't exist.
+     * 
+     * @return Region|null
+     */
+    public function getRegionFromOrganization()
+    {
+        if ($this->organization && $this->organization->region_id) {
+            return Region::find($this->organization->region_id);
+        }
+        
+        return $this->region;
     }
 
     /**

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Story Model
  * 
- * Represents a story submitted by a reader and reviewed by super admin.
+ * Represents a story submitted by a writer and reviewed by super admin or editor.
  */
 class Story extends Model
 {

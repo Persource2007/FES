@@ -13,8 +13,9 @@ info:
     **Activity Tracking:** All user activities are logged to the database. Users can only view their own activities.
     
     **Story Management:** 
-    - Readers can submit stories for review
-    - Super admins can review, approve, reject, edit, and delete stories
+    - Writers can submit stories for review
+    - Editors can review, approve, reject, and edit stories from their organization
+    - Super admins can review, approve, reject, edit, and delete all stories
     - Published stories are available via public endpoint
   version: 1.0.0
   contact:
@@ -41,8 +42,10 @@ tags:
     description: User activity logging and retrieval endpoints
   - name: Regions
     description: Region management endpoints
+  - name: Organizations
+    description: Organization management endpoints (Super admin only)
   - name: Story Categories
-    description: Story category management and reader access control endpoints (Super admin only)
+    description: Story category management and writer access control endpoints (Super admin and Editors)
   - name: Stories
     description: Story submission, review, and publishing endpoints
 
@@ -193,7 +196,7 @@ paths:
                     name: "John Doe"
                     email: "john@example.com"
                     role_id: 2
-                    role_name: "Reader"
+                    role_name: "Writer"
                     created_at: "2025-12-01T10:00:00+00:00"
                     updated_at: "2025-12-01T10:00:00+00:00"
         '500':
@@ -230,6 +233,7 @@ paths:
               email: "jane@example.com"
               password: "password123"
               role_id: 2
+              organization_id: 1
       responses:
         '201':
           description: User created successfully
@@ -245,7 +249,7 @@ paths:
                   name: "Jane Doe"
                   email: "jane@example.com"
                   role_id: 2
-                  role_name: "Reader"
+                  role_name: "Writer"
                   created_at: "2025-12-01T12:00:00+00:00"
                   updated_at: "2025-12-01T12:00:00+00:00"
         '400':
@@ -304,7 +308,7 @@ paths:
                 success: true
                 roles:
                   - id: 2
-                    role_name: "Reader"
+                    role_name: "Writer"
         '500':
           description: Internal server error
           content:
@@ -345,7 +349,10 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateRoleRequest'
             example:
+              name: "John Doe"
+              email: "john@example.com"
               role_id: 2
+              organization_id: 1
       responses:
         '200':
           description: User role updated successfully
@@ -361,7 +368,7 @@ paths:
                   name: "John Doe"
                   email: "john@example.com"
                   role_id: 2
-                  role_name: "Reader"
+                  role_name: "Writer"
                   created_at: "2025-12-01T10:00:00+00:00"
                   updated_at: "2025-12-01T12:00:00+00:00"
         '400':
@@ -442,7 +449,7 @@ paths:
                   name: "John Doe"
                   email: "john@example.com"
                   role_id: 2
-                  role_name: "Reader"
+                  role_name: "Writer"
                   is_active: false
                   created_at: "2025-12-01T10:00:00+00:00"
                   updated_at: "2025-12-02T12:00:00+00:00"
@@ -624,11 +631,11 @@ paths:
                     timestamp: "2025-12-02T10:30:00+00:00"
                   - id: 2
                     type: "create"
-                    message: "Created new user: John Doe (john@example.com) with role: Reader"
+                    message: "Created new user: John Doe (john@example.com) with role: Writer"
                     metadata:
                       userEmail: "john@example.com"
                       userName: "John Doe"
-                      roleName: "Reader"
+                      roleName: "Writer"
                     timestamp: "2025-12-02T10:25:00+00:00"
         '400':
           description: Validation error - Invalid user_id
@@ -739,8 +746,25 @@ paths:
         - Story Categories
       summary: Get all story categories
       description: |
-        Retrieves all story categories. Available to all authenticated users.
+        Retrieves all story categories. 
+        
+        **Access:** 
+        - Super admins see all categories
+        - Editors see only categories from their organization
+        - Writers see only categories accessible to their organization
+        
+        **Query Parameters:**
+        - `user_id` (optional): User ID for organization-based filtering
       operationId: getStoryCategories
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          description: User ID for organization-based filtering (required for Editors)
+          schema:
+            type: integer
+            format: int64
+          example: 1
       responses:
         '200':
           description: Successfully retrieved categories
@@ -760,7 +784,13 @@ paths:
         - Story Categories
       summary: Create a new story category
       description: |
-        Creates a new story category. **Super admin only.**
+        Creates a new story category. 
+        
+        **Access:** 
+        - Super admin: Can assign to any organizations
+        - Editor: Automatically assigned to their organization only
+        
+        **Note:** Categories are now assigned to organizations instead of regions.
       operationId: createStoryCategory
       requestBody:
         required: true
@@ -772,6 +802,8 @@ paths:
               name: "Technology"
               description: "Stories about technology and innovation"
               is_active: true
+              organization_ids: [1, 2]
+              user_id: 1
       responses:
         '201':
           description: Category created successfully
@@ -798,7 +830,13 @@ paths:
         - Story Categories
       summary: Update a story category
       description: |
-        Updates an existing story category. **Super admin only.**
+        Updates an existing story category.
+        
+        **Access:** 
+        - Super admin: Can update any category and change organization assignments
+        - Editor: Can only update categories from their organization, cannot change organization assignment
+        
+        **Note:** Categories are now assigned to organizations instead of regions.
       operationId: updateStoryCategory
       parameters:
         - name: id
@@ -819,6 +857,8 @@ paths:
               name: "Technology and Innovation"
               description: "Updated description"
               is_active: true
+              organization_ids: [1, 2]
+              user_id: 1
       responses:
         '200':
           description: Category updated successfully
@@ -939,14 +979,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/story-categories/readers:
+  /api/story-categories/writers:
     get:
       tags:
         - Story Categories
-      summary: Get all readers with their category access
+      summary: Get all writers with their category access
       description: |
-        Retrieves all readers with their assigned category access. **Super admin only.**
-      operationId: getReadersWithAccess
+        Retrieves all writers with their assigned category access. **Super admin only.**
+        
+        **Note:** "Reader" role has been renamed to "Writer".
+      operationId: getWritersWithAccess
       responses:
         '200':
           description: Successfully retrieved readers with access
@@ -961,14 +1003,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/story-categories/readers/{userId}:
+  /api/story-categories/writers/{userId}:
     get:
       tags:
         - Story Categories
-      summary: Get categories accessible by a reader
+      summary: Get categories accessible by a writer
       description: |
-        Retrieves all categories that a specific reader has access to.
-      operationId: getReaderCategories
+        Retrieves all categories that a specific writer has access to.
+        
+        **Note:** Writers can only access categories assigned to their organization.
+        "Reader" role has been renamed to "Writer".
+      operationId: getWriterCategories
       parameters:
         - name: userId
           in: path
@@ -1004,15 +1049,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/story-categories/readers/{userId}/access:
+  /api/story-categories/writers/{userId}/access:
     put:
       tags:
         - Story Categories
-      summary: Update reader access to categories
+      summary: Update writer access to categories
       description: |
-        Updates which categories a reader can post stories to. **Super admin only.**
+        Updates which categories a writer can post stories to. **Super admin only.**
         This replaces all existing access with the provided category IDs.
-      operationId: updateReaderAccess
+        
+        **Note:** "Reader" role has been renamed to "Writer".
+      operationId: updateWriterAccess
       parameters:
         - name: userId
           in: path
@@ -1090,16 +1137,19 @@ paths:
     post:
       tags:
         - Stories
-      summary: Submit a new story (Reader only)
+      summary: Submit a new story (Writer only)
       description: |
-        Submits a new story for review. **Reader only.**
+        Submits a new story for review. **Writer only.**
         
         **Requirements:**
         - User must have `post_stories` permission
-        - User must have access to the selected category
+        - User must be a Writer role
+        - User must have access to the selected category (through their organization)
         - Category must be active
         
-        Story will be created with status `pending` and requires super admin approval.
+        Story will be created with status `pending` and requires admin/editor approval.
+        
+        **Note:** "Reader" role has been renamed to "Writer".
       operationId: submitStory
       requestBody:
         required: true
@@ -1148,12 +1198,26 @@ paths:
     get:
       tags:
         - Stories
-      summary: Get pending stories for review (Super admin only)
+      summary: Get pending stories for review
       description: |
-        Retrieves all stories with status `pending` awaiting super admin review.
+        Retrieves all stories with status `pending` awaiting review.
         
-        **Access:** Super admin only
+        **Access:** 
+        - Super admin: Sees all pending stories
+        - Editor: Sees only pending stories from writers in their organization
+        
+        **Query Parameters:**
+        - `user_id` (required for Editors): User ID for organization-based filtering
       operationId: getPendingStories
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          description: User ID for organization-based filtering (required for Editors)
+          schema:
+            type: integer
+            format: int64
+          example: 1
       responses:
         '200':
           description: Successfully retrieved pending stories
@@ -1172,12 +1236,26 @@ paths:
     get:
       tags:
         - Stories
-      summary: Get count of pending stories (Super admin only)
+      summary: Get count of pending stories
       description: |
         Returns the count of stories awaiting review. Used for notification badges.
         
-        **Access:** Super admin only
+        **Access:** 
+        - Super admin: Sees count of all pending stories
+        - Editor: Sees count of pending stories from writers in their organization
+        
+        **Query Parameters:**
+        - `user_id` (required for Editors): User ID for organization-based filtering
       operationId: getPendingStoriesCount
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          description: User ID for organization-based filtering (required for Editors)
+          schema:
+            type: integer
+            format: int64
+          example: 1
       responses:
         '200':
           description: Successfully retrieved pending count
@@ -1319,16 +1397,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/stories/reader/{userId}:
+  /api/stories/writer/{userId}:
     get:
       tags:
         - Stories
-      summary: Get stories for a reader (their own stories)
+      summary: Get stories for a writer (their own stories)
       description: |
-        Retrieves all stories submitted by a specific reader.
+        Retrieves all stories submitted by a specific writer.
         
-        Returns stories with all statuses (pending, published, rejected) for the reader.
-      operationId: getReaderStories
+        Returns stories with all statuses (pending, published, rejected) for the writer.
+        
+        **Note:** "Reader" role has been renamed to "Writer".
+      operationId: getWriterStories
       parameters:
         - name: userId
           in: path
@@ -1358,15 +1438,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/stories/approved/all:
+    get:
+      tags:
+        - Stories
+      summary: Get all approved stories
+      description: |
+        Retrieves all published stories.
+        
+        **Access:** 
+        - Super admin: Sees all approved stories
+        - Editor: Sees only approved stories from writers in their organization
+        
+        **Query Parameters:**
+        - `user_id` (required for Editors): User ID for organization-based filtering
+      operationId: getAllApprovedStories
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          description: User ID for organization-based filtering (required for Editors)
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        '200':
+          description: Successfully retrieved approved stories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovedStoriesResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/stories/approved/{adminId}:
     get:
       tags:
         - Stories
-      summary: Get stories approved by an admin (Super admin only)
+      summary: Get stories approved by an admin
       description: |
-        Retrieves all published stories that were approved by a specific super admin.
+        Retrieves all published stories that were approved by a specific admin.
         
-        **Access:** Super admin only
+        **Access:** 
+        - Super admin: Sees all stories approved by any admin
+        - Editor: Sees only stories from their organization approved by them
+        
+        **Note:** Editors can only see stories from writers in their organization.
       operationId: getApprovedStories
       parameters:
         - name: adminId
@@ -1737,18 +1859,29 @@ components:
           example: 2
         role_name:
           type: string
-          description: Role name
-          example: "Reader"
+          description: Role name (Reader renamed to Writer)
+          example: "Writer"
+        organization_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Organization ID
+          example: 1
+        organization_name:
+          type: string
+          nullable: true
+          description: Organization name
+          example: "Test ORG 1"
         region_id:
           type: integer
           format: int64
           nullable: true
-          description: Region ID
+          description: Region ID (derived from organization)
           example: 1
         region_name:
           type: string
           nullable: true
-          description: Region name
+          description: Region name (derived from organization)
           example: "Maharashtra"
         is_active:
           type: boolean
@@ -1786,6 +1919,7 @@ components:
         - email
         - password
         - role_id
+        - organization_id
       properties:
         name:
           type: string
@@ -1809,6 +1943,11 @@ components:
           format: int64
           description: Role ID (cannot be Super admin)
           example: 2
+        organization_id:
+          type: integer
+          format: int64
+          description: Organization ID the user belongs to
+          example: 1
 
     CreateUserResponse:
       type: object
@@ -1829,13 +1968,32 @@ components:
     UpdateRoleRequest:
       type: object
       required:
+        - name
+        - email
         - role_id
+        - organization_id
       properties:
+        name:
+          type: string
+          maxLength: 255
+          description: User full name
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: User email address (must be unique, except for current user)
+          example: "john@example.com"
         role_id:
           type: integer
           format: int64
           description: New role ID (cannot be Super admin)
           example: 2
+        organization_id:
+          type: integer
+          format: int64
+          description: Organization ID the user belongs to
+          example: 1
 
     UpdateRoleResponse:
       type: object
@@ -1877,7 +2035,7 @@ components:
         role_name:
           type: string
           description: Role name
-          example: "Reader"
+          example: "Writer"
 
     RoleListResponse:
       type: object
@@ -2609,7 +2767,7 @@ components:
               example: 2
             role_name:
               type: string
-              example: "Reader"
+              example: "Writer"
             region_id:
               type: integer
               format: int64
@@ -2646,6 +2804,120 @@ components:
           example: "Category status updated successfully"
         category:
           $ref: '#/components/schemas/StoryCategory'
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Organization ID
+          example: 1
+        name:
+          type: string
+          maxLength: 255
+          description: Organization name
+          example: "Test ORG 1"
+        region_id:
+          type: integer
+          format: int64
+          description: Region ID this organization belongs to
+          example: 1
+        region_name:
+          type: string
+          nullable: true
+          description: Region name (from join)
+          example: "Maharashtra"
+        is_active:
+          type: boolean
+          description: Whether the organization is active
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when organization was created
+          example: "2025-12-05T10:00:00+00:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when organization was last updated
+          example: "2025-12-05T10:00:00+00:00"
+
+    OrganizationListResponse:
+      type: object
+      required:
+        - success
+        - organizations
+      properties:
+        success:
+          type: boolean
+          example: true
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+
+    CreateOrganizationRequest:
+      type: object
+      required:
+        - name
+        - region_id
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Organization name (must be unique)
+          example: "Test ORG 2"
+        region_id:
+          type: integer
+          format: int64
+          description: Region ID this organization belongs to
+          example: 2
+
+    CreateOrganizationResponse:
+      type: object
+      required:
+        - success
+        - message
+        - organization
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Organization created successfully"
+        organization:
+          $ref: '#/components/schemas/Organization'
+
+    DeleteOrganizationResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Organization deleted successfully"
+
+    ToggleOrganizationStatusResponse:
+      type: object
+      required:
+        - success
+        - message
+        - organization
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Organization status updated successfully"
+        organization:
+          $ref: '#/components/schemas/Organization'
 
   securitySchemes:
     BearerAuth:

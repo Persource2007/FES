@@ -29,6 +29,14 @@ export const API_ENDPOINTS = {
   REGIONS: {
     LIST: '/api/regions',
   },
+  // Organization endpoints
+  ORGANIZATIONS: {
+    LIST: '/api/organizations',
+    CREATE: '/api/organizations',
+    UPDATE: (id) => `/api/organizations/${id}`,
+    TOGGLE_STATUS: (id) => `/api/organizations/${id}/toggle-status`,
+    DELETE: (id) => `/api/organizations/${id}`,
+  },
   // Story category endpoints
   STORY_CATEGORIES: {
     LIST: '/api/story-categories',
@@ -36,9 +44,9 @@ export const API_ENDPOINTS = {
     UPDATE: (id) => `/api/story-categories/${id}`,
     TOGGLE_STATUS: (id) => `/api/story-categories/${id}/toggle-status`,
     DELETE: (id) => `/api/story-categories/${id}`,
-    READERS: '/api/story-categories/readers',
-    READER_CATEGORIES: (userId) => `/api/story-categories/readers/${userId}`,
-    UPDATE_READER_ACCESS: (userId) => `/api/story-categories/readers/${userId}/access`,
+    WRITERS: '/api/story-categories/writers',
+    WRITER_CATEGORIES: (userId) => `/api/story-categories/writers/${userId}`,
+    UPDATE_WRITER_ACCESS: (userId) => `/api/story-categories/writers/${userId}/access`,
   },
   // Story endpoints
   STORIES: {
@@ -49,7 +57,7 @@ export const API_ENDPOINTS = {
     PENDING_COUNT: '/api/stories/pending/count',
     APPROVE: (id) => `/api/stories/${id}/approve`,
     REJECT: (id) => `/api/stories/${id}/reject`,
-    READER_STORIES: (userId) => `/api/stories/reader/${userId}`,
+    WRITER_STORIES: (userId) => `/api/stories/writer/${userId}`,
     APPROVED_STORIES: (adminId) => `/api/stories/approved/${adminId}`,
     ALL_APPROVED_STORIES: '/api/stories/approved/all',
     UPDATE: (id) => `/api/stories/${id}`,

@@ -15,6 +15,7 @@ import {
   FaChevronUp,
   FaGlobe,
   FaInfoCircle,
+  FaBuilding,
 } from 'react-icons/fa'
 import {
   canManageUsers,
@@ -43,15 +44,21 @@ function Sidebar({ user, onLogout }) {
   } = useApi(API_ENDPOINTS.STORIES.PENDING_COUNT, { immediate: false })
 
   useEffect(() => {
-    if (user && canManageStoryCategories(user)) {
-      fetchPendingCount()
-      // Refresh count every 15 seconds
-      const interval = setInterval(() => {
-        fetchPendingCount()
-      }, 15000)
-      return () => clearInterval(interval)
+    if (!user || !canManageStoryCategories(user)) {
+      return
     }
-  }, [user])
+
+    // Initial fetch
+    fetchPendingCount({ user_id: user.id })
+    
+    // Refresh count every 15 seconds
+    const interval = setInterval(() => {
+      fetchPendingCount({ user_id: user.id })
+    }, 15000)
+    
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   useEffect(() => {
     if (pendingCountData?.success) {
@@ -231,6 +238,17 @@ function Sidebar({ user, onLogout }) {
       icon: FaHome,
       visible: true,
     },
+    // Organizations menu - visible if user can manage users OR if permissions not set up yet
+    ...((hasPermissions ? canManageUsers(user) : true)
+      ? [
+          {
+            name: 'Organizations',
+            path: '/dashboard/organizations',
+            icon: FaBuilding,
+            visible: true,
+          },
+        ]
+      : []),
     // Users menu - visible if user can manage users OR if permissions not set up yet
     ...((hasPermissions ? canManageUsers(user) : true)
       ? [
@@ -343,15 +361,10 @@ function Sidebar({ user, onLogout }) {
               </>
             ) : (
               <>
-                <div 
-                  className="h-8 w-8 flex-shrink-0 rounded-full bg-white p-1.5"
-                  style={{
-                    backgroundImage: 'url(/images/fes-logo-white.svg)',
-                    backgroundSize: 'contain',
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat',
-                    clipPath: 'circle(50% at 50% 50%)'
-                  }}
+                <img 
+                  src="/images/fes-logo-white.svg" 
+                  alt="FES Stories" 
+                  className="h-8 w-auto flex-shrink-0"
                   title="FES Stories"
                 />
                 <FaChevronRight className="w-3 h-3 text-slate-400 flex-shrink-0" />

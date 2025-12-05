@@ -33,7 +33,7 @@ function Users() {
     email: '',
     password: '',
     role_id: '',
-    region_id: '',
+    organization_id: '',
   })
 
   // Fetch users
@@ -52,13 +52,13 @@ function Users() {
     execute: fetchRoles,
   } = useApi(API_ENDPOINTS.USERS.ROLES, { immediate: false })
 
-  // Fetch regions
+  // Fetch organizations
   const {
-    data: regionsData,
-    loading: regionsLoading,
-    error: regionsError,
-    execute: fetchRegions,
-  } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
+    data: organizationsData,
+    loading: organizationsLoading,
+    error: organizationsError,
+    execute: fetchOrganizations,
+  } = useApi(API_ENDPOINTS.ORGANIZATIONS.LIST, { immediate: false })
 
   // Mutations
   const { execute: createUser, loading: creating } = useMutation(
@@ -111,9 +111,9 @@ function Users() {
         console.error('Error fetching roles:', err)
         toast.error('Failed to load roles. Please check if backend is running.')
       })
-      fetchRegions().catch((err) => {
-        console.error('Error fetching regions:', err)
-        toast.error('Failed to load regions. Please check if backend is running.')
+      fetchOrganizations().catch((err) => {
+        console.error('Error fetching organizations:', err)
+        toast.error('Failed to load organizations. Please check if backend is running.')
       })
     }
   }, [user])
@@ -134,14 +134,16 @@ function Users() {
       
       // Log activity (fire-and-forget, don't block on error)
       const roleName = roles.find(r => r.id === parseInt(formData.role_id))?.role_name || 'Unknown'
-      addActivity('create', `Created new user: ${formData.name} (${formData.email}) with role: ${roleName}`, {
+      const orgName = organizations.find(o => o.id === parseInt(formData.organization_id))?.name || 'Unknown'
+      addActivity('create', `Created new user: ${formData.name} (${formData.email}) with role: ${roleName} in organization: ${orgName}`, {
         userEmail: formData.email,
         userName: formData.name,
         roleName: roleName,
+        organizationName: orgName,
       }).catch(err => console.error('Failed to log create activity:', err))
       
       setShowAddModal(false)
-      setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
+      setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
       fetchUsers()
     } catch (error) {
       const errorMessage =
@@ -159,7 +161,7 @@ function Users() {
       email: userItem.email,
       password: '', // Don't pre-fill password
       role_id: userItem.role_id,
-      region_id: userItem.region_id || '',
+      organization_id: userItem.organization_id || '',
     })
     setShowAddModal(true)
   }
@@ -225,16 +227,18 @@ function Users() {
       const userToUpdate = users.find(u => u.id === editingUser.id)
       const oldRoleName = userToUpdate?.role_name || 'Unknown'
       const newRoleName = roles.find(r => r.id === parseInt(formData.role_id))?.role_name || 'Unknown'
-      const oldRegionName = userToUpdate?.region_name || 'None'
-      const newRegionName = regions.find(r => r.id === parseInt(formData.region_id))?.name || 'None'
+      const oldOrgName = userToUpdate?.organization_name || 'None'
+      const newOrgName = organizations.find(o => o.id === parseInt(formData.organization_id))?.name || 'None'
 
       // Use apiClient directly for dynamic URL
       const response = await apiClient({
         method: 'PUT',
         url: API_ENDPOINTS.USERS.UPDATE_ROLE(editingUser.id),
         data: { 
+          name: formData.name,
+          email: formData.email,
           role_id: parseInt(formData.role_id),
-          region_id: formData.region_id ? parseInt(formData.region_id) : null,
+          organization_id: parseInt(formData.organization_id),
         },
       })
 
@@ -248,8 +252,8 @@ function Users() {
         if (oldRoleName !== newRoleName) {
           changes.push(`Role: ${oldRoleName} → ${newRoleName}`)
         }
-        if (oldRegionName !== newRegionName) {
-          changes.push(`Region: ${oldRegionName} → ${newRegionName}`)
+        if (oldOrgName !== newOrgName) {
+          changes.push(`Organization: ${oldOrgName} → ${newOrgName}`)
         }
         if (userToUpdate.name !== formData.name) {
           changes.push(`Name: ${userToUpdate.name} → ${formData.name}`)
@@ -263,14 +267,14 @@ function Users() {
           userEmail: formData.email,
           oldRole: oldRoleName,
           newRole: newRoleName,
-          oldRegion: oldRegionName,
-          newRegion: newRegionName,
+          oldOrganization: oldOrgName,
+          newOrganization: newOrgName,
         }).catch(err => console.error('Failed to log edit activity:', err))
       }
 
       setEditingUser(null)
       setShowAddModal(false)
-      setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
+      setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
       fetchUsers()
     } catch (error) {
       console.error('Error updating user:', error)
@@ -332,7 +336,7 @@ function Users() {
 
   const [users, setUsers] = useState([])
   const roles = rolesData?.roles || []
-  const regions = regionsData?.regions || []
+  const organizations = organizationsData?.organizations || []
 
   // Update users when data changes
   useEffect(() => {
@@ -345,10 +349,11 @@ function Users() {
   useEffect(() => {
     console.log('Users data:', usersData)
     console.log('Roles data:', rolesData)
+    console.log('Organizations data:', organizationsData)
     console.log('Users array:', users)
     console.log('Loading:', usersLoading)
     console.log('Error:', usersError)
-  }, [usersData, rolesData, users, usersLoading, usersError])
+  }, [usersData, rolesData, organizationsData, users, usersLoading, usersError])
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -407,7 +412,7 @@ function Users() {
                       Role
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Region
+                      Organization
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
@@ -437,9 +442,9 @@ function Users() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {userItem.region_name ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            {userItem.region_name}
+                        {userItem.organization_name ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            {userItem.organization_name}
                           </span>
                         ) : (
                           <span className="text-gray-400">—</span>
@@ -503,7 +508,7 @@ function Users() {
                 onClick={() => {
                   setShowAddModal(false)
                   setEditingUser(null)
-                  setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
+                  setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -576,24 +581,25 @@ function Users() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Region (State)
+                    Organization *
                   </label>
                   <select
-                    name="region_id"
-                    value={formData.region_id}
+                    name="organization_id"
+                    value={formData.organization_id}
                     onChange={handleInputChange}
+                    required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    disabled={regionsLoading}
+                    disabled={organizationsLoading}
                   >
-                    <option value="">Select a region (optional)</option>
-                    {regions.map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.name}
+                    <option value="">Select an organization</option>
+                    {organizations.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name} {org.region_name ? `(${org.region_name})` : ''}
                       </option>
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
-                    Readers will automatically get access to categories assigned to their region
+                    Users will automatically get access to categories assigned to their organization's region. Region will be set automatically from the organization.
                   </p>
                 </div>
               </div>
@@ -603,7 +609,7 @@ function Users() {
                   onClick={() => {
                     setShowAddModal(false)
                     setEditingUser(null)
-                    setFormData({ name: '', email: '', password: '', role_id: '', region_id: '' })
+                    setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
                   }}
                   className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
                 >
