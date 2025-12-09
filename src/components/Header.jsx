@@ -181,6 +181,17 @@ function Header() {
             <div id="google_translate_element" style={{ position: 'absolute', left: '-9999px', opacity: 0, pointerEvents: 'none' }}></div>
 
             <Link
+              to="/oauth"
+              className={`font-medium transition-colors ${
+                isActive('/oauth')
+                  ? 'text-green-800 font-semibold border-b-2 border-green-700'
+                  : 'text-gray-700 hover:text-green-700'
+              }`}
+            >
+              OAuth
+            </Link>
+
+            <Link
               to="/login"
               className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors font-medium shadow-md hover:shadow-lg"
             >

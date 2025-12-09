@@ -16,6 +16,7 @@ import {
   FaGlobe,
   FaInfoCircle,
   FaBuilding,
+  FaCode,
 } from 'react-icons/fa'
 import {
   canManageUsers,
@@ -291,6 +292,25 @@ function Sidebar({ user, onLogout }) {
             path: '/dashboard/activity',
             icon: FaHistory,
             visible: true,
+          },
+        ]
+      : []),
+    // API menu - visible only to super admin (users who can manage users)
+    ...((hasPermissions ? canManageUsers(user) : false)
+      ? [
+          {
+            name: 'API',
+            path: '/dashboard/api',
+            icon: FaCode,
+            visible: true,
+            hasSubmenu: true,
+            submenu: [
+              {
+                name: 'Admin Hierarchy Microservice testing',
+                path: '/dashboard/api',
+                icon: FaCode,
+              },
+            ],
           },
         ]
       : []),

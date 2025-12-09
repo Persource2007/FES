@@ -1161,6 +1161,15 @@ paths:
               user_id: 2
               category_id: 1
               title: "Saving the western ghats forest"
+              subtitle: "A community's fight for conservation"
+              photo_url: "https://example.com/images/story-photo.jpg"
+              quote: "We must protect our forests for future generations"
+              person_name: "Rajesh Kumar"
+              person_location: "Mumbai, Maharashtra"
+              facilitator_name: "Dr. Priya Sharma"
+              facilitator_organization: "FES Foundation"
+              state: "Maharashtra"
+              city: "Mumbai"
               content: "A tribal community's fight to protect their ancestral woodland from commercial logging."
       responses:
         '201':
@@ -1613,6 +1622,15 @@ paths:
             example:
               admin_user_id: 1
               title: "Updated story title"
+              subtitle: "Updated subtitle"
+              photo_url: "https://example.com/images/updated-photo.jpg"
+              quote: "Updated quote text"
+              person_name: "Updated Person Name"
+              person_location: "Updated Location"
+              facilitator_name: "Updated Facilitator"
+              facilitator_organization: "Updated Organization"
+              state: "Karnataka"
+              city: "Bangalore"
               content: "Updated story content"
               category_id: 1
       responses:
@@ -2374,9 +2392,66 @@ components:
           maxLength: 255
           description: Story title
           example: "Saving the western ghats forest"
+        slug:
+          type: string
+          description: URL-friendly story slug
+          example: "saving-the-western-ghats-forest"
+        subtitle:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Story subtitle
+          example: "A community's fight for conservation"
+        photo_url:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: URL to story photo
+          example: "https://example.com/images/story-photo.jpg"
+        quote:
+          type: string
+          nullable: true
+          description: Quote from the story subject
+          example: "We must protect our forests for future generations"
+        person_name:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Name of the person featured in the story
+          example: "Rajesh Kumar"
+        person_location:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Location of the person featured in the story
+          example: "Mumbai, Maharashtra"
+        facilitator_name:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Name of the facilitator
+          example: "Dr. Priya Sharma"
+        facilitator_organization:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Organization of the facilitator
+          example: "FES Foundation"
+        state:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: State where the story takes place
+          example: "Maharashtra"
+        city:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: City where the story takes place
+          example: "Mumbai"
         content:
           type: string
-          description: Story content
+          description: Story content (HTML supported)
           example: "A tribal community's fight to protect their ancestral woodland from commercial logging."
         status:
           type: string
@@ -2477,6 +2552,7 @@ components:
         - category_id
         - title
         - content
+        - state
       properties:
         user_id:
           type: integer
@@ -2493,9 +2569,61 @@ components:
           maxLength: 255
           description: Story title
           example: "Saving the western ghats forest"
+        subtitle:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Story subtitle (optional)
+          example: "A community's fight for conservation"
+        photo_url:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: URL to story photo (optional)
+          example: "https://example.com/images/story-photo.jpg"
+        quote:
+          type: string
+          nullable: true
+          description: Quote from the story subject (optional)
+          example: "We must protect our forests for future generations"
+        person_name:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Name of the person featured in the story (optional)
+          example: "Rajesh Kumar"
+        person_location:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Location of the person featured in the story (optional)
+          example: "Mumbai, Maharashtra"
+        facilitator_name:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Name of the facilitator (optional)
+          example: "Dr. Priya Sharma"
+        facilitator_organization:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Organization of the facilitator (optional)
+          example: "FES Foundation"
+        state:
+          type: string
+          maxLength: 255
+          description: State where the story takes place (required)
+          example: "Maharashtra"
+        city:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: City where the story takes place (optional)
+          example: "Mumbai"
         content:
           type: string
-          description: Story content
+          description: Story content (HTML supported)
           example: "A tribal community's fight to protect their ancestral woodland from commercial logging."
 
     SubmitStoryResponse:
@@ -2647,9 +2775,61 @@ components:
           maxLength: 255
           description: Updated story title (optional)
           example: "Updated story title"
+        subtitle:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Updated story subtitle (optional)
+          example: "Updated subtitle"
+        photo_url:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Updated story photo URL (optional)
+          example: "https://example.com/images/updated-photo.jpg"
+        quote:
+          type: string
+          nullable: true
+          description: Updated quote (optional)
+          example: "Updated quote text"
+        person_name:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Updated person name (optional)
+          example: "Updated Person Name"
+        person_location:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Updated person location (optional)
+          example: "Updated Location"
+        facilitator_name:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Updated facilitator name (optional)
+          example: "Updated Facilitator"
+        facilitator_organization:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Updated facilitator organization (optional)
+          example: "Updated Organization"
+        state:
+          type: string
+          maxLength: 255
+          description: Updated state (optional, but required if provided)
+          example: "Karnataka"
+        city:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Updated city (optional)
+          example: "Bangalore"
         content:
           type: string
-          description: Updated story content (optional)
+          description: Updated story content (optional, HTML supported)
           example: "Updated story content"
         category_id:
           type: integer
@@ -2805,123 +2985,3 @@ components:
         category:
           $ref: '#/components/schemas/StoryCategory'
 
-    Organization:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-          description: Organization ID
-          example: 1
-        name:
-          type: string
-          maxLength: 255
-          description: Organization name
-          example: "Test ORG 1"
-        region_id:
-          type: integer
-          format: int64
-          description: Region ID this organization belongs to
-          example: 1
-        region_name:
-          type: string
-          nullable: true
-          description: Region name (from join)
-          example: "Maharashtra"
-        is_active:
-          type: boolean
-          description: Whether the organization is active
-          example: true
-        created_at:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when organization was created
-          example: "2025-12-05T10:00:00+00:00"
-        updated_at:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when organization was last updated
-          example: "2025-12-05T10:00:00+00:00"
-
-    OrganizationListResponse:
-      type: object
-      required:
-        - success
-        - organizations
-      properties:
-        success:
-          type: boolean
-          example: true
-        organizations:
-          type: array
-          items:
-            $ref: '#/components/schemas/Organization'
-
-    CreateOrganizationRequest:
-      type: object
-      required:
-        - name
-        - region_id
-      properties:
-        name:
-          type: string
-          maxLength: 255
-          description: Organization name (must be unique)
-          example: "Test ORG 2"
-        region_id:
-          type: integer
-          format: int64
-          description: Region ID this organization belongs to
-          example: 2
-
-    CreateOrganizationResponse:
-      type: object
-      required:
-        - success
-        - message
-        - organization
-      properties:
-        success:
-          type: boolean
-          example: true
-        message:
-          type: string
-          example: "Organization created successfully"
-        organization:
-          $ref: '#/components/schemas/Organization'
-
-    DeleteOrganizationResponse:
-      type: object
-      required:
-        - success
-        - message
-      properties:
-        success:
-          type: boolean
-          example: true
-        message:
-          type: string
-          example: "Organization deleted successfully"
-
-    ToggleOrganizationStatusResponse:
-      type: object
-      required:
-        - success
-        - message
-        - organization
-      properties:
-        success:
-          type: boolean
-          example: true
-        message:
-          type: string
-          example: "Organization status updated successfully"
-        organization:
-          $ref: '#/components/schemas/Organization'
-
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: JWT token authentication (to be implemented)

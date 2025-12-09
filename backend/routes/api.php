@@ -84,7 +84,8 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->post('/{id}/reject', 'StoryController@reject');
         
         // Variable routes (must be last)
-        $router->get('/{id}', 'StoryController@getPublishedStory'); // Public endpoint - get single story
+        $router->get('/slug/{slug}', 'StoryController@getPublishedStoryBySlug'); // Public endpoint - get single story by slug
+        $router->get('/{id}', 'StoryController@getPublishedStory'); // Public endpoint - get single story by ID (for backward compatibility)
         $router->put('/{id}', 'StoryController@update');
         $router->delete('/{id}', 'StoryController@destroy');
     });

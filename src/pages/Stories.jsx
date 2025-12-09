@@ -17,6 +17,7 @@ import { useApi, useMutation } from '../hooks/useApi'
 import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
+import LocationSelector from '../components/LocationSelector'
 import { addActivity } from '../utils/activity'
 import { formatDateTime } from '../utils/dateFormat'
 import {
@@ -74,6 +75,14 @@ function Stories() {
     execute: fetchOrganizations,
   } = useApi(API_ENDPOINTS.ORGANIZATIONS.LIST, { immediate: false })
 
+  // Fetch regions for state dropdown
+  const {
+    data: regionsData,
+    loading: regionsLoading,
+    error: regionsError,
+    execute: fetchRegions,
+  } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
+
   // Mutations
   const { execute: createCategory, loading: creating } = useMutation(
     API_ENDPOINTS.STORY_CATEGORIES.CREATE
@@ -85,6 +94,7 @@ function Stories() {
   const [categories, setCategories] = useState([])
   const [categoriesLoading, setCategoriesLoading] = useState(false)
   const organizations = organizationsData?.organizations || []
+  const regions = regionsData?.regions || []
   const [writerStories, setWriterStories] = useState([])
   const [approvedStories, setApprovedStories] = useState([])
   const [editingStory, setEditingStory] = useState(null)
@@ -92,6 +102,7 @@ function Stories() {
   const [writerStoriesLoading, setWriterStoriesLoading] = useState(false)
   const [approvedStoriesLoading, setApprovedStoriesLoading] = useState(false)
   const isFetchingApprovedStories = useRef(false)
+  const [expandedStories, setExpandedStories] = useState(new Set()) // Track expanded stories for read more
 
   // Writer story submission state (moved to top level to follow Rules of Hooks)
   const [showSubmitForm, setShowSubmitForm] = useState(false)
@@ -99,6 +110,27 @@ function Stories() {
   const [storyFormData, setStoryFormData] = useState({
     category_id: '',
     title: '',
+    subtitle: '',
+    photo_url: '',
+    quote: '',
+    person_name: '',
+    person_location: '',
+    facilitator_name: '',
+    facilitator_organization: '',
+    state: '',
+    city: '',
+    state_id: '',
+    state_name: '',
+    district_id: '',
+    district_name: '',
+    sub_district_id: '',
+    sub_district_name: '',
+    block_id: '',
+    block_name: '',
+    panchayat_id: '',
+    panchayat_name: '',
+    village_id: '',
+    village_name: '',
     content: '',
   })
 
@@ -195,11 +227,13 @@ function Stories() {
       if (canManage) {
         fetchCategories()
         fetchOrganizations()
+        fetchRegions()
         fetchApprovedStories()
       } else if (canPost) {
         // Fetch categories accessible by this writer
         fetchWriterCategories()
         fetchWriterStories()
+        fetchRegions()
       }
     }
     // fetchApprovedStories is stable via useCallback, so we don't need it in deps
@@ -409,8 +443,8 @@ function Stories() {
   }
 
   const handleSubmitStory = async () => {
-    if (!storyFormData.category_id || !storyFormData.title || !storyFormData.content.trim()) {
-      toast.error('Please fill in all fields')
+    if (!storyFormData.category_id || !storyFormData.title || !storyFormData.content.trim() || !storyFormData.state_id) {
+      toast.error('Please fill in all required fields (Category, Title, Location, Content)')
       return
     }
 
@@ -418,12 +452,58 @@ function Stories() {
       const response = await submitStory({
         category_id: parseInt(storyFormData.category_id),
         title: storyFormData.title,
+        subtitle: storyFormData.subtitle || null,
+        photo_url: storyFormData.photo_url || null,
+        quote: storyFormData.quote || null,
+        person_name: storyFormData.person_name || null,
+        person_location: storyFormData.person_location || null,
+        facilitator_name: storyFormData.facilitator_name || null,
+        facilitator_organization: storyFormData.facilitator_organization || null,
+        state: storyFormData.state || null,
+        city: storyFormData.city || null,
+        state_id: storyFormData.state_id || null,
+        state_name: storyFormData.state_name || null,
+        district_id: storyFormData.district_id || null,
+        district_name: storyFormData.district_name || null,
+        sub_district_id: storyFormData.sub_district_id || null,
+        sub_district_name: storyFormData.sub_district_name || null,
+        block_id: storyFormData.block_id || null,
+        block_name: storyFormData.block_name || null,
+        panchayat_id: storyFormData.panchayat_id || null,
+        panchayat_name: storyFormData.panchayat_name || null,
+        village_id: storyFormData.village_id || null,
+        village_name: storyFormData.village_name || null,
         content: storyFormData.content,
         user_id: user.id,
       })
       if (response?.success) {
         toast.success('Story submitted successfully! It will be reviewed by an administrator.')
-        setStoryFormData({ category_id: '', title: '', content: '' })
+        setStoryFormData({ 
+          category_id: '', 
+          title: '', 
+          subtitle: '',
+          photo_url: '',
+          quote: '',
+          person_name: '',
+          person_location: '',
+          facilitator_name: '',
+          facilitator_organization: '',
+          state: '',
+          city: '',
+          state_id: '',
+          state_name: '',
+          district_id: '',
+          district_name: '',
+          sub_district_id: '',
+          sub_district_name: '',
+          block_id: '',
+          block_name: '',
+          panchayat_id: '',
+          panchayat_name: '',
+          village_id: '',
+          village_name: '',
+          content: '' 
+        })
         setShowSubmitForm(false)
         setSelectedCategory(null)
         addActivity('create', `Submitted story: ${storyFormData.title}`)
@@ -447,6 +527,27 @@ function Stories() {
   // Story edit form state (for admin)
   const [editStoryForm, setEditStoryForm] = useState({
     title: '',
+    subtitle: '',
+    photo_url: '',
+    quote: '',
+    person_name: '',
+    person_location: '',
+    facilitator_name: '',
+    facilitator_organization: '',
+    state: '',
+    city: '',
+    state_id: '',
+    state_name: '',
+    district_id: '',
+    district_name: '',
+    sub_district_id: '',
+    sub_district_name: '',
+    block_id: '',
+    block_name: '',
+    panchayat_id: '',
+    panchayat_name: '',
+    village_id: '',
+    village_name: '',
     content: '',
     category_id: '',
   })
@@ -464,7 +565,20 @@ function Stories() {
       if (response.data.success) {
         toast.success('Story updated successfully')
         setEditingStory(null)
-        setEditStoryForm({ title: '', content: '', category_id: '' })
+        setEditStoryForm({ 
+          title: '', 
+          subtitle: '',
+          photo_url: '',
+          quote: '',
+          person_name: '',
+          person_location: '',
+          facilitator_name: '',
+          facilitator_organization: '',
+          state: '',
+          city: '',
+          content: '', 
+          category_id: '' 
+        })
         fetchApprovedStories()
         addActivity('edit', `Updated story: ${editStoryForm.title}`)
       }
@@ -569,7 +683,32 @@ function Stories() {
                     <button
                       onClick={() => {
                         setShowSubmitForm(false)
-                        setStoryFormData({ category_id: '', title: '', content: '' })
+                        setStoryFormData({ 
+                          category_id: '', 
+                          title: '', 
+                          subtitle: '',
+                          photo_url: '',
+                          quote: '',
+                          person_name: '',
+                          person_location: '',
+                          facilitator_name: '',
+                          facilitator_organization: '',
+                          state: '',
+                          city: '',
+                          state_id: '',
+                          state_name: '',
+                          district_id: '',
+                          district_name: '',
+                          sub_district_id: '',
+                          sub_district_name: '',
+                          block_id: '',
+                          block_name: '',
+                          panchayat_id: '',
+                          panchayat_name: '',
+                          village_id: '',
+                          village_name: '',
+                          content: '' 
+                        })
                         setSelectedCategory(null)
                       }}
                       className="text-gray-400 hover:text-gray-600"
@@ -621,6 +760,191 @@ function Stories() {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Subtitle
+                      </label>
+                      <input
+                        type="text"
+                        name="subtitle"
+                        value={storyFormData.subtitle}
+                        onChange={handleStoryInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                        placeholder="Enter story subtitle (optional)"
+                        maxLength={255}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Photo URL
+                      </label>
+                      <input
+                        type="url"
+                        name="photo_url"
+                        value={storyFormData.photo_url}
+                        onChange={handleStoryInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                        placeholder="Enter photo URL (optional)"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Quote
+                      </label>
+                      <textarea
+                        name="quote"
+                        value={storyFormData.quote}
+                        onChange={handleStoryInputChange}
+                        rows="3"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                        placeholder="Enter quote from the person (optional)"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Person Name
+                        </label>
+                        <input
+                          type="text"
+                          name="person_name"
+                          value={storyFormData.person_name}
+                          onChange={handleStoryInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                          placeholder="Person's name (optional)"
+                          maxLength={255}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Person Location
+                        </label>
+                        <input
+                          type="text"
+                          name="person_location"
+                          value={storyFormData.person_location}
+                          onChange={handleStoryInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                          placeholder="Person's location (optional)"
+                          maxLength={255}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Facilitator Name
+                        </label>
+                        <input
+                          type="text"
+                          name="facilitator_name"
+                          value={storyFormData.facilitator_name}
+                          onChange={handleStoryInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                          placeholder="Facilitator name (optional)"
+                          maxLength={255}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Facilitator Organization
+                        </label>
+                        <input
+                          type="text"
+                          name="facilitator_organization"
+                          value={storyFormData.facilitator_organization}
+                          onChange={handleStoryInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                          placeholder="Facilitator organization (optional)"
+                          maxLength={255}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Location *
+                      </label>
+                      <LocationSelector
+                        selectedStateId={storyFormData.state_id}
+                        selectedDistrictId={storyFormData.district_id}
+                        selectedSubDistrictId={storyFormData.sub_district_id}
+                        selectedBlockId={storyFormData.block_id}
+                        selectedPanchayatId={storyFormData.panchayat_id}
+                        selectedVillageId={storyFormData.village_id}
+                        onStateChange={(id, name) => {
+                          setStoryFormData(prev => ({
+                            ...prev,
+                            state_id: id,
+                            state_name: name,
+                            district_id: '',
+                            district_name: '',
+                            sub_district_id: '',
+                            sub_district_name: '',
+                            block_id: '',
+                            block_name: '',
+                            panchayat_id: '',
+                            panchayat_name: '',
+                            village_id: '',
+                            village_name: '',
+                          }))
+                        }}
+                        onDistrictChange={(id, name) => {
+                          setStoryFormData(prev => ({
+                            ...prev,
+                            district_id: id,
+                            district_name: name,
+                            sub_district_id: '',
+                            sub_district_name: '',
+                            block_id: '',
+                            block_name: '',
+                            panchayat_id: '',
+                            panchayat_name: '',
+                            village_id: '',
+                            village_name: '',
+                          }))
+                        }}
+                        onSubDistrictChange={(id, name) => {
+                          setStoryFormData(prev => ({
+                            ...prev,
+                            sub_district_id: id,
+                            sub_district_name: name,
+                            panchayat_id: '',
+                            panchayat_name: '',
+                            village_id: '',
+                            village_name: '',
+                          }))
+                        }}
+                        onBlockChange={(id, name) => {
+                          setStoryFormData(prev => ({
+                            ...prev,
+                            block_id: id,
+                            block_name: name,
+                          }))
+                        }}
+                        onPanchayatChange={(id, name) => {
+                          setStoryFormData(prev => ({
+                            ...prev,
+                            panchayat_id: id,
+                            panchayat_name: name,
+                            village_id: '',
+                            village_name: '',
+                          }))
+                        }}
+                        onVillageChange={(id, name) => {
+                          setStoryFormData(prev => ({
+                            ...prev,
+                            village_id: id,
+                            village_name: name,
+                          }))
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Content *
                       </label>
                       <textarea
@@ -636,7 +960,7 @@ function Stories() {
                     <div className="flex gap-2 pt-4">
                       <button
                         onClick={handleSubmitStory}
-                        disabled={submitting || !storyFormData.category_id || !storyFormData.title || !storyFormData.content.trim()}
+                        disabled={submitting || !storyFormData.category_id || !storyFormData.title || !storyFormData.content.trim() || !storyFormData.state_id}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <FaCheck />
@@ -645,7 +969,19 @@ function Stories() {
                       <button
                         onClick={() => {
                           setShowSubmitForm(false)
-                          setStoryFormData({ category_id: '', title: '', content: '' })
+                          setStoryFormData({ 
+                            category_id: '', 
+                            title: '', 
+                            subtitle: '',
+                            photo_url: '',
+                            quote: '',
+                            person_name: '',
+                            person_location: '',
+                            facilitator_name: '',
+                            facilitator_organization: '',
+                            description: '',
+                            content: '' 
+                          })
                           setSelectedCategory(null)
                         }}
                         className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
@@ -987,16 +1323,126 @@ function Stories() {
                               <span>Published {formatDateTime(story.published_at)}</span>
                             </div>
                           </div>
-                          <p className="text-gray-700 mt-2">{story.content}</p>
+                          <p className="text-gray-700 mt-2 line-clamp-3">{story.content}</p>
+                          
+                          {/* Read More Section - Expandable for full story details */}
+                          {expandedStories.has(story.id) ? (
+                            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                              <h4 className="font-semibold text-gray-900 mb-3">Full Story Details</h4>
+                              <div className="space-y-3 text-sm">
+                                {story.subtitle && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Subtitle:</span>
+                                    <p className="text-gray-600 mt-1">{story.subtitle}</p>
+                                  </div>
+                                )}
+                                {story.photo_url && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Photo:</span>
+                                    <div className="mt-2">
+                                      <img 
+                                        src={story.photo_url} 
+                                        alt={story.person_name || story.title || 'Story photo'} 
+                                        className="max-w-md h-auto rounded-lg border border-gray-300"
+                                        onError={(e) => {
+                                          e.target.style.display = 'none'
+                                          if (e.target.nextSibling) {
+                                            e.target.nextSibling.style.display = 'block'
+                                          }
+                                        }}
+                                      />
+                                      <p className="text-gray-500 text-xs mt-1 break-all hidden">{story.photo_url}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                {story.quote && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Quote:</span>
+                                    <p className="text-gray-600 mt-1 italic">"{story.quote}"</p>
+                                  </div>
+                                )}
+                                {(story.person_name || story.person_location) && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Person:</span>
+                                    <p className="text-gray-600 mt-1">
+                                      {story.person_name}
+                                      {story.person_location && ` - ${story.person_location}`}
+                                    </p>
+                                  </div>
+                                )}
+                                {(story.facilitator_name || story.facilitator_organization) && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Facilitator:</span>
+                                    <p className="text-gray-600 mt-1">
+                                      {story.facilitator_name}
+                                      {story.facilitator_organization && ` - ${story.facilitator_organization}`}
+                                    </p>
+                                  </div>
+                                )}
+                                {(story.village_name || story.panchayat_name || story.block_name || story.district_name || story.state_name) && (
+                                  <div>
+                                    <span className="font-medium text-gray-700">Location:</span>
+                                    <p className="text-gray-600 mt-1">
+                                      {[story.village_name, story.panchayat_name, story.block_name, story.district_name, story.state_name].filter(Boolean).join(', ')}
+                                    </p>
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="font-medium text-gray-700">Content:</span>
+                                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{story.content}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setExpandedStories(prev => {
+                                    const newSet = new Set(prev)
+                                    newSet.delete(story.id)
+                                    return newSet
+                                  })
+                                }}
+                                className="mt-4 text-sm text-slate-600 hover:text-slate-800 font-medium"
+                              >
+                                Read Less ↑
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setExpandedStories(prev => new Set(prev).add(story.id))
+                              }}
+                              className="mt-2 text-sm text-slate-600 hover:text-slate-800 font-medium"
+                            >
+                              Read More ↓
+                            </button>
+                          )}
                         </div>
                         <div className="flex gap-2 ml-4">
                           <button
                             onClick={() => {
                               setEditingStory(story)
                               setEditStoryForm({
-                                title: story.title,
-                                content: story.content,
-                                category_id: story.category_id,
+                                title: story.title || '',
+                                subtitle: story.subtitle || '',
+                                photo_url: story.photo_url || '',
+                                quote: story.quote || '',
+                                person_name: story.person_name || '',
+                                person_location: story.person_location || '',
+                                facilitator_name: story.facilitator_name || '',
+                                facilitator_organization: story.facilitator_organization || '',
+                                state_id: story.state_id || '',
+                                state_name: story.state_name || '',
+                                district_id: story.district_id || '',
+                                district_name: story.district_name || '',
+                                sub_district_id: story.sub_district_id || '',
+                                sub_district_name: story.sub_district_name || '',
+                                block_id: story.block_id || '',
+                                block_name: story.block_name || '',
+                                panchayat_id: story.panchayat_id || '',
+                                panchayat_name: story.panchayat_name || '',
+                                village_id: story.village_id || '',
+                                village_name: story.village_name || '',
+                                content: story.content || '',
+                                category_id: story.category_id || '',
                               })
                             }}
                             className="p-2 text-slate-600 hover:bg-slate-100 rounded transition-colors"
@@ -1032,7 +1478,32 @@ function Stories() {
                 <button
                   onClick={() => {
                     setEditingStory(null)
-                    setEditStoryForm({ title: '', content: '', category_id: '' })
+                    setEditStoryForm({ 
+          title: '', 
+          subtitle: '',
+          photo_url: '',
+          quote: '',
+          person_name: '',
+          person_location: '',
+          facilitator_name: '',
+          facilitator_organization: '',
+          state: '',
+          city: '',
+          state_id: '',
+          state_name: '',
+          district_id: '',
+          district_name: '',
+          sub_district_id: '',
+          sub_district_name: '',
+          block_id: '',
+          block_name: '',
+          panchayat_id: '',
+          panchayat_name: '',
+          village_id: '',
+          village_name: '',
+          content: '', 
+          category_id: '' 
+        })
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -1079,6 +1550,192 @@ function Stories() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Subtitle
+                  </label>
+                  <input
+                    type="text"
+                    value={editStoryForm.subtitle}
+                    onChange={(e) =>
+                      setEditStoryForm((prev) => ({ ...prev, subtitle: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                    placeholder="Story subtitle (optional)"
+                    maxLength={255}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Photo URL
+                  </label>
+                  <input
+                    type="url"
+                    value={editStoryForm.photo_url}
+                    onChange={(e) =>
+                      setEditStoryForm((prev) => ({ ...prev, photo_url: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                    placeholder="Photo URL (optional)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Quote
+                  </label>
+                  <textarea
+                    value={editStoryForm.quote}
+                    onChange={(e) =>
+                      setEditStoryForm((prev) => ({ ...prev, quote: e.target.value }))
+                    }
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                    placeholder="Quote from the person (optional)"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Person Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editStoryForm.person_name}
+                      onChange={(e) =>
+                        setEditStoryForm((prev) => ({ ...prev, person_name: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                      placeholder="Person's name (optional)"
+                      maxLength={255}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Person Location
+                    </label>
+                    <input
+                      type="text"
+                      value={editStoryForm.person_location}
+                      onChange={(e) =>
+                        setEditStoryForm((prev) => ({ ...prev, person_location: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                      placeholder="Person's location (optional)"
+                      maxLength={255}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Facilitator Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editStoryForm.facilitator_name}
+                      onChange={(e) =>
+                        setEditStoryForm((prev) => ({ ...prev, facilitator_name: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                      placeholder="Facilitator name (optional)"
+                      maxLength={255}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Facilitator Organization
+                    </label>
+                    <input
+                      type="text"
+                      value={editStoryForm.facilitator_organization}
+                      onChange={(e) =>
+                        setEditStoryForm((prev) => ({ ...prev, facilitator_organization: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                      placeholder="Facilitator organization (optional)"
+                      maxLength={255}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Location *
+                  </label>
+                  <LocationSelector
+                    selectedStateId={editStoryForm.state_id}
+                    selectedDistrictId={editStoryForm.district_id}
+                    selectedSubDistrictId={editStoryForm.sub_district_id}
+                    selectedBlockId={editStoryForm.block_id}
+                    selectedPanchayatId={editStoryForm.panchayat_id}
+                    selectedVillageId={editStoryForm.village_id}
+                    onStateChange={(id, name) => {
+                      setEditStoryForm(prev => ({
+                        ...prev,
+                        state_id: id,
+                        state_name: name,
+                        district_id: '',
+                        district_name: '',
+                        sub_district_id: '',
+                        sub_district_name: '',
+                        block_id: '',
+                        block_name: '',
+                        panchayat_id: '',
+                        panchayat_name: '',
+                        village_id: '',
+                        village_name: '',
+                      }))
+                    }}
+                    onDistrictChange={(id, name) => {
+                      setEditStoryForm(prev => ({
+                        ...prev,
+                        district_id: id,
+                        district_name: name,
+                        sub_district_id: '',
+                        sub_district_name: '',
+                        block_id: '',
+                        block_name: '',
+                        panchayat_id: '',
+                        panchayat_name: '',
+                        village_id: '',
+                        village_name: '',
+                      }))
+                    }}
+                    onSubDistrictChange={(id, name) => {
+                      setEditStoryForm(prev => ({
+                        ...prev,
+                        sub_district_id: id,
+                        sub_district_name: name,
+                        panchayat_id: '',
+                        panchayat_name: '',
+                        village_id: '',
+                        village_name: '',
+                      }))
+                    }}
+                    onBlockChange={(id, name) => {
+                      setEditStoryForm(prev => ({
+                        ...prev,
+                        block_id: id,
+                        block_name: name,
+                      }))
+                    }}
+                    onPanchayatChange={(id, name) => {
+                      setEditStoryForm(prev => ({
+                        ...prev,
+                        panchayat_id: id,
+                        panchayat_name: name,
+                        village_id: '',
+                        village_name: '',
+                      }))
+                    }}
+                    onVillageChange={(id, name) => {
+                      setEditStoryForm(prev => ({
+                        ...prev,
+                        village_id: id,
+                        village_name: name,
+                      }))
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Content *
                   </label>
                   <textarea
@@ -1095,7 +1752,7 @@ function Stories() {
               <div className="flex gap-2 mt-6">
                 <button
                   onClick={handleUpdateStory}
-                  disabled={!editStoryForm.title.trim() || !editStoryForm.content.trim() || !editStoryForm.category_id}
+                  disabled={!editStoryForm.title.trim() || !editStoryForm.content.trim() || !editStoryForm.category_id || !editStoryForm.state_id}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <FaCheck />
@@ -1104,7 +1761,32 @@ function Stories() {
                 <button
                   onClick={() => {
                     setEditingStory(null)
-                    setEditStoryForm({ title: '', content: '', category_id: '' })
+                    setEditStoryForm({ 
+          title: '', 
+          subtitle: '',
+          photo_url: '',
+          quote: '',
+          person_name: '',
+          person_location: '',
+          facilitator_name: '',
+          facilitator_organization: '',
+          state: '',
+          city: '',
+          state_id: '',
+          state_name: '',
+          district_id: '',
+          district_name: '',
+          sub_district_id: '',
+          sub_district_name: '',
+          block_id: '',
+          block_name: '',
+          panchayat_id: '',
+          panchayat_name: '',
+          village_id: '',
+          village_name: '',
+          content: '', 
+          category_id: '' 
+        })
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >

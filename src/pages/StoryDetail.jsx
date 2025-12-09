@@ -16,7 +16,7 @@ import {
 } from 'react-icons/fa'
 import apiClient from '../utils/api'
 import { API_ENDPOINTS } from '../utils/constants'
-import { generateSlug, getStoryIdFromSlug } from '../utils/slug'
+import { generateSlug, getStoryIdFromSlug, getStorySlug } from '../utils/slug'
 import { formatDate } from '../utils/dateFormat'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
@@ -40,20 +40,40 @@ function StoryDetail() {
     fetchStory()
   }, [slug])
 
+  // Update URL if story slug has changed
+  useEffect(() => {
+    if (story && story.slug && slug) {
+      // If current slug doesn't match story slug, update URL
+      if (slug !== story.slug) {
+        // Update URL without page reload
+        navigate(`/stories/${story.slug}`, { replace: true })
+      }
+    }
+  }, [story, slug, navigate])
+
   const fetchStory = async () => {
     try {
       setLoading(true)
       setError(null)
       
-      // Extract story ID from slug
-      const storyId = getStoryIdFromSlug(slug)
-      if (!storyId) {
-        setError('Invalid story URL')
-        setLoading(false)
-        return
+      // Get story slug (or ID for backward compatibility)
+      const storySlug = getStorySlug(slug)
+      let response
+      
+      if (storySlug) {
+        // Use slug endpoint
+        response = await apiClient.get(API_ENDPOINTS.STORIES.GET_BY_SLUG(storySlug))
+      } else {
+        // Backward compatibility: use ID endpoint
+        const storyId = getStoryIdFromSlug(slug)
+        if (!storyId) {
+          setError('Invalid story URL')
+          setLoading(false)
+          return
+        }
+        response = await apiClient.get(API_ENDPOINTS.STORIES.GET(storyId))
       }
-
-      const response = await apiClient.get(API_ENDPOINTS.STORIES.GET(storyId))
+      
       if (response.data.success) {
         setStory(response.data.story)
       } else {
@@ -70,7 +90,7 @@ function StoryDetail() {
   // Generate story URL for sharing
   const getStoryUrl = () => {
     if (!story) return ''
-    const storySlug = `${story.id}-${generateSlug(story.title)}`
+    const storySlug = story.slug || generateSlug(story.title)
     return `${window.location.origin}/stories/${storySlug}`
   }
 
@@ -210,9 +230,9 @@ function StoryDetail() {
     return parsedContent
   }
 
-  // Prepare stories by region for map (only this story's state)
-  const storiesByRegion = story && story.region_name
-    ? { [story.region_name]: [story] }
+  // Prepare stories by state for map (only this story's state)
+  const storiesByRegion = story && story.state_name
+    ? { [story.state_name]: [story] }
     : {}
 
   if (loading) {
@@ -251,97 +271,135 @@ function StoryDetail() {
     )
   }
 
+  // Extract story fields (with fallbacks for fields that may not exist yet)
+  const storyPhoto = story.photo_url || story.photo || null
+  const storyQuote = story.quote || ''
+  const facilitatorName = story.facilitator_name || story.facilitator || ''
+  const personName = story.person_name || story.author_name || ''
+  const personLocation = story.person_location || story.village_name || story.panchayat_name || story.block_name || story.district_name || story.state_name || ''
+  const storyDescription = story.content || ''
+
   return (
     <div className="min-h-screen bg-white">
       <Header />
 
-      {/* Story Header */}
-      <section className="bg-gradient-to-b from-slate-50 to-white py-8 border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Link
-            to="/stories"
-            className="inline-flex items-center gap-2 text-green-700 hover:text-green-800 mb-4 text-sm font-medium"
-          >
-            ← Back to Stories
-          </Link>
-          
-          <div className="flex items-center gap-2 mb-4">
-            <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
-              {story.category_name}
-            </span>
-            {story.region_name && (
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
-                {story.region_name}
+      {/* Story Page - Matching Image Layout */}
+      <section className="py-8 bg-white relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Top Right Label - Category Name - Aligned with Header */}
+          <div className="flex justify-end mb-6">
+            {story.category_name && (
+              <span className="bg-green-700 text-white px-4 py-2 text-xs font-bold tracking-wide rounded uppercase">
+                {story.category_name}
               </span>
             )}
           </div>
 
-          <h1 className="text-4xl lg:text-5xl font-bold text-slate-900 mb-4">
-            {story.title}
-          </h1>
-
-          <div className="flex items-center gap-6 text-gray-600 mb-6">
-            {story.author_name && (
-              <div className="flex items-center gap-2">
-                <FaUser className="text-gray-400" />
-                <span className="font-medium">{story.author_name}</span>
-              </div>
-            )}
-            {story.published_at && (
-              <div className="flex items-center gap-2">
-                <FaClock className="text-gray-400" />
-                <span>{formatDate(story.published_at)}</span>
-              </div>
+          {/* Title Section */}
+          <div className="mb-8">
+            <h1 className="text-4xl lg:text-5xl font-bold text-green-800 mb-2 leading-tight">
+              {story.title}
+            </h1>
+            {story.subtitle && (
+              <h2 className="text-2xl lg:text-3xl font-bold text-green-800 leading-tight">
+                {story.subtitle}
+              </h2>
             )}
           </div>
 
-          {/* Social Sharing Buttons */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-600 font-medium">Share:</span>
-            <button
-              onClick={shareOnFacebook}
-              className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
-              aria-label="Share on Facebook"
-            >
-              <FaFacebook className="text-sm" />
-            </button>
-            <button
-              onClick={shareOnTwitter}
-              className="p-2 bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors"
-              aria-label="Share on Twitter"
-            >
-              <FaTwitter className="text-sm" />
-            </button>
-            <button
-              onClick={shareOnLinkedIn}
-              className="p-2 bg-blue-700 text-white rounded-full hover:bg-blue-800 transition-colors"
-              aria-label="Share on LinkedIn"
-            >
-              <FaLinkedin className="text-sm" />
-            </button>
-            <button
-              onClick={shareOnWhatsApp}
-              className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
-              aria-label="Share on WhatsApp"
-            >
-              <FaWhatsapp className="text-sm" />
-            </button>
+          {/* Main Content Layout: Photo on Left, Quote Below, Description on Right */}
+          <div className="flex flex-col lg:flex-row gap-8 mt-8 items-start">
+            {/* Left Column: Photo and Quote - Fixed width to match image */}
+            <div className="w-full lg:w-auto flex-shrink-0">
+              <div className="max-w-xs space-y-6">
+                {/* Person Photo */}
+                <div className="w-full">
+                  {storyPhoto ? (
+                    <img
+                      src={storyPhoto}
+                      alt={personName || 'Story person'}
+                      className="w-full h-auto rounded-lg object-cover"
+                    />
+                  ) : (
+                    <img
+                      src="/people/people1.png"
+                      alt="Default person"
+                      className="w-full aspect-[3/4] rounded-lg object-cover"
+                    />
+                  )}
+                </div>
+
+                {/* Quote Section - Only show if quote exists */}
+                {storyQuote && (
+                  <div className="relative mt-6 w-full">
+                    {/* Modern Quote Mark - Above text */}
+                    <div className="flex justify-start mb-2">
+                      <svg 
+                        width="40" 
+                        height="40" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="text-green-700 opacity-30"
+                      >
+                        <path 
+                          d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.996 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.984zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" 
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-base lg:text-lg font-semibold text-green-800 leading-relaxed">
+                      {storyQuote}
+                    </p>
+                  </div>
+                )}
+
+                {/* Person Attribution - Show independently if person name exists */}
+                {personName && (
+                  <div className={`mt-6 pt-4 ${storyQuote ? 'border-t border-gray-300' : ''}`}>
+                    <p className="font-bold text-gray-900 text-sm lg:text-base tracking-tight">{personName}</p>
+                    {personLocation && (
+                      <p className="text-xs lg:text-sm text-gray-600 mt-1 font-medium">{personLocation}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Description - Takes remaining space */}
+            <div className="flex-1 flex flex-col h-full min-w-0">
+              <div className="prose prose-lg max-w-none text-gray-700 leading-relaxed flex-1">
+                {storyDescription ? (
+                  <div
+                    className="text-base lg:text-lg leading-7"
+                    dangerouslySetInnerHTML={{ __html: parseContent(storyDescription) }}
+                  />
+                ) : (
+                  <p className="text-gray-500 italic text-base">No description available.</p>
+                )}
+              </div>
+            </div>
           </div>
+
+          {/* Facilitator Name at Bottom Right - Only show if facilitator name exists */}
+          {facilitatorName && (
+            <div className="mt-8 pt-4">
+              <div className="flex justify-end">
+                <div className="text-right">
+                  <p className="font-bold text-gray-900 text-base tracking-tight">{facilitatorName}</p>
+                  {story.facilitator_organization && (
+                    <p className="text-sm text-gray-600 mt-1 font-medium">{story.facilitator_organization}</p>
+                  )}
+                  <p className="text-xs text-gray-500 uppercase tracking-wide mt-1 font-semibold">Facilitator</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Story Content */}
-      <section className="py-12 bg-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div
-            className="prose prose-lg max-w-none text-gray-700"
-            dangerouslySetInnerHTML={{ __html: parseContent(story.content) }}
-          />
-        </div>
-      </section>
-
-      {/* Interactive Map Section */}
-      {story.region_name && (
+      {/* Interactive Map Section - COMMENTED OUT */}
+      {/* {story.state_name && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12">
           <h2 className="text-3xl font-bold text-green-800 mb-6 text-center">
             Story Location
@@ -351,12 +409,12 @@ function StoryDetail() {
               storiesByRegion={storiesByRegion}
               onStateClick={() => {}}
               showFilters={false}
-              focusedState={story.region_name}
+              focusedState={story.state_name}
               interactive={false}
             />
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Commenting Section */}
       <section className="py-12 bg-white border-t border-gray-200">

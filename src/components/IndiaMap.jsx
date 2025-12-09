@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { FaFilter, FaSearch, FaTimes, FaMapMarkerAlt } from 'react-icons/fa'
 import { generateSlug } from '../utils/slug'
 import apiClient from '../utils/api'
@@ -84,17 +84,21 @@ function IndiaMap({
     }
   }
 
-  // Filter stories based on selected category, region, and search query
+  // Get unique states from stories for the filter dropdown (use state_name)
+  const uniqueStates = [...new Set(stories.filter(s => s.state_name).map(s => s.state_name))].sort()
+
+  // Filter stories based on selected category, state, and search query
   const filteredStories = stories.filter((story) => {
     const matchesCategory = !selectedCategory || story.category_id === parseInt(selectedCategory)
-    const matchesRegion = !selectedRegion || story.region_id === parseInt(selectedRegion)
+    // Filter by state name (use state_name)
+    const matchesState = !selectedRegion || story.state_name === selectedRegion
     
     // Text search in title and content
     const matchesSearch = !searchQuery || 
       story.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       story.content?.toLowerCase().includes(searchQuery.toLowerCase())
     
-    return matchesCategory && matchesRegion && matchesSearch
+    return matchesCategory && matchesState && matchesSearch
   })
 
   // Handle search button click
@@ -103,15 +107,15 @@ function IndiaMap({
     setSearchQuery(searchInput)
   }
 
-  // Group stories by region for map markers
+  // Group stories by state for map markers
   // If externalStoriesByRegion is provided, use it directly (for StoryDetail)
-  // Otherwise, filter and group stories
+  // Otherwise, filter and group stories by state_name
   const storiesByRegion = externalStoriesByRegion || filteredStories.reduce((acc, story) => {
-    if (story.region_name) {
-      if (!acc[story.region_name]) {
-        acc[story.region_name] = []
+    if (story.state_name) {
+      if (!acc[story.state_name]) {
+        acc[story.state_name] = []
       }
-      acc[story.region_name].push(story)
+      acc[story.state_name].push(story)
     }
     return acc
   }, {})
@@ -122,12 +126,17 @@ function IndiaMap({
     if (externalOnStateClick) {
       externalOnStateClick(stateName)
     } else {
-      // Otherwise, filter by region internally
-      const region = regions.find((r) => r.name === stateName)
-      if (region) {
-        setSelectedRegion(region.id.toString())
-      }
+      // Otherwise, filter by state name directly
+      setSelectedRegion(stateName)
     }
+  }
+  
+  // Handle reset filters from map
+  const handleResetFilters = () => {
+    setSelectedCategory('')
+    setSelectedRegion('')
+    setSearchInput('')
+    setSearchQuery('')
   }
 
   // Handle story click - show modal instead of navigating
@@ -149,138 +158,188 @@ function IndiaMap({
 
   return (
     <div className="w-full">
-      {/* Filter Controls - Only show if showFilters is true */}
-      {showFilters && (
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <form onSubmit={handleSearch} className="space-y-4">
-          <div className="flex items-center gap-2 text-gray-700 mb-4">
-            <FaFilter className="text-green-700" />
-            <span className="font-medium">Filters:</span>
-          </div>
-          <div className="flex flex-col md:flex-row gap-4 items-end">
-            {/* Search Box */}
-            <div className="flex-1 w-full md:w-auto">
-              <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
-                Search Stories
-              </label>
-              <div className="relative">
-                <input
-                  id="search"
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleSearch(e)
-                    }
-                  }}
-                  placeholder="Search by title or content..."
-                  className="w-full md:w-80 px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-500"
-                />
-                <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              </div>
-            </div>
-            
-            {/* Category Filter */}
-            <div className="flex-1 w-full md:w-auto">
-              <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
-                Category
-              </label>
-              <select
-                id="category"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-500"
-              >
-                <option value="">All Categories</option>
-                {categories
-                  .filter((cat) => cat.is_active)
-                  .map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            
-            {/* Region Filter */}
-            <div className="flex-1 w-full md:w-auto">
-              <label htmlFor="region" className="block text-sm font-medium text-gray-700 mb-1">
-                State
-              </label>
-              <select
-                id="region"
-                value={selectedRegion}
-                onChange={(e) => setSelectedRegion(e.target.value)}
-                className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-500"
-              >
-                <option value="">All States</option>
-                {regions
-                  .filter((region) => region.is_active)
-                  .map((region) => (
-                    <option key={region.id} value={region.id}>
-                      {region.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            
-            {/* Search Button */}
-            <div className="w-full md:w-auto">
-              <button
-                type="submit"
-                className="w-full md:w-auto px-6 py-2 bg-green-700 text-white rounded-lg font-semibold hover:bg-green-800 transition-colors flex items-center justify-center gap-2"
-              >
-                <FaSearch />
-                Search
-              </button>
-            </div>
-          </div>
-          
-          {/* Results Count and Reset */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-200">
-            <div className="text-sm text-gray-600">
-              Showing {filteredStories.length} {filteredStories.length === 1 ? 'story' : 'stories'}
-            </div>
-            {(selectedCategory || selectedRegion || searchQuery) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCategory('')
-                  setSelectedRegion('')
-                  setSearchInput('')
-                  setSearchQuery('')
-                }}
-                className="text-sm text-green-700 hover:text-green-800 font-medium px-3 py-1 border border-green-300 rounded-lg hover:bg-green-50 transition-colors"
-              >
-                Reset Filters
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-      )}
-
-      {/* Map */}
+      {/* Map with Filters - Only show if showFilters is true */}
       {showFilters ? (
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="relative bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 h-96 lg:h-[600px]">
-            {loading ? (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700 mx-auto mb-4"></div>
-                  <p className="text-gray-700">Loading map...</p>
-                </div>
+        <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
+          <div className="flex flex-col lg:flex-row">
+            {/* Filter Controls - Left Side */}
+            <div className="w-full lg:w-80 xl:w-96 bg-gray-50 border-r border-gray-300 flex flex-col max-h-[600px]">
+              {/* Filters Section - Compact */}
+              <div className="p-4 border-b border-gray-300 flex-shrink-0">
+                <form onSubmit={handleSearch} className="space-y-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 text-gray-700">
+                      <FaFilter className="text-green-700 text-sm" />
+                      <span className="font-medium text-sm">Filters</span>
+                    </div>
+                    {filteredStories.length > 0 && (
+                      <div className="text-xs text-gray-600">
+                        {filteredStories.length} {filteredStories.length === 1 ? 'story' : 'stories'} found
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Search Box */}
+                  <div>
+                    <label htmlFor="search" className="block text-xs font-medium text-gray-700 mb-1">
+                      Search
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="search"
+                        type="text"
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleSearch(e)
+                          }
+                        }}
+                        placeholder="Search stories..."
+                        className="w-full px-3 py-1.5 pl-8 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-600 focus:border-green-500"
+                      />
+                      <FaSearch className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs" />
+                    </div>
+                  </div>
+                  
+                  {/* Category Filter */}
+                  <div>
+                    <label htmlFor="category" className="block text-xs font-medium text-gray-700 mb-1">
+                      Category
+                    </label>
+                    <select
+                      id="category"
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-600 focus:border-green-500"
+                    >
+                      <option value="">All Categories</option>
+                      {categories
+                        .filter((cat) => cat.is_active)
+                        .map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  
+                  {/* State Filter */}
+                  <div>
+                    <label htmlFor="state" className="block text-xs font-medium text-gray-700 mb-1">
+                      State
+                    </label>
+                    <select
+                      id="state"
+                      value={selectedRegion}
+                      onChange={(e) => setSelectedRegion(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-600 focus:border-green-500"
+                    >
+                      <option value="">All States</option>
+                      {uniqueStates.map((state) => (
+                        <option key={state} value={state}>
+                          {state}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Search Button and Reset */}
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="flex-1 px-3 py-1.5 bg-green-700 text-white rounded text-sm font-medium hover:bg-green-800 transition-colors flex items-center justify-center gap-1"
+                    >
+                      <FaSearch className="text-xs" />
+                      Search
+                    </button>
+                    {(selectedCategory || selectedRegion || searchQuery) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategory('')
+                          setSelectedRegion('')
+                          setSearchInput('')
+                          setSearchQuery('')
+                        }}
+                        className="px-3 py-1.5 text-xs text-green-700 hover:text-green-800 font-medium border border-green-300 rounded hover:bg-green-50 transition-colors"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </form>
               </div>
-            ) : (
-              <IndiaMapSVG
-                storiesByRegion={storiesByRegion}
-                onStateClick={handleStateClick}
-                onStoryClick={handleStoryClick}
-                focusedState={focusedState}
-              />
-            )}
+
+              {/* Filtered Stories List - Shows more stories before scrolling */}
+              <div className="flex-1 overflow-y-auto p-2">
+                {filteredStories.length > 0 ? (
+                  <div>
+                    <h3 className="text-xs font-semibold text-gray-700 mb-2">Stories</h3>
+                    <div style={{ maxHeight: filteredStories.length > 4 ? '400px' : 'none', overflowY: filteredStories.length > 4 ? 'auto' : 'visible' }}>
+                      {filteredStories.map((story, index) => {
+                        const storySlug = story.slug || generateSlug(story.title)
+                        return (
+                          <div key={story.id}>
+                            <Link
+                              to={`/stories/${storySlug}`}
+                              className="block py-2 hover:bg-gray-50 transition-colors"
+                            >
+                              <h4 className="text-xs font-medium text-gray-900 line-clamp-2 mb-1">
+                                {story.title}
+                              </h4>
+                              <div className="flex flex-wrap gap-1">
+                                {story.category_name && (
+                                  <span className="inline-block text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                    {story.category_name}
+                                  </span>
+                                )}
+                                {story.state_name && (
+                                  <span className="inline-block text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                    {story.state_name}
+                                  </span>
+                                )}
+                              </div>
+                            </Link>
+                            {index < filteredStories.length - 1 && (
+                              <div className="border-b border-gray-200"></div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500 text-sm">
+                    <FaMapMarkerAlt className="mx-auto mb-2 text-gray-400" />
+                    <p>No stories found</p>
+                    <p className="text-xs mt-1">Try adjusting your filters</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Map - Right Side */}
+            <div className="flex-1 relative bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 h-96 lg:h-[600px]">
+              {loading ? (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700 mx-auto mb-4"></div>
+                    <p className="text-gray-700">Loading map...</p>
+                  </div>
+                </div>
+              ) : (
+                <IndiaMapSVG
+                  storiesByRegion={storiesByRegion}
+                  onStateClick={handleStateClick}
+                  onStoryClick={handleStoryClick}
+                  focusedState={focusedState}
+                  onResetFilters={handleResetFilters}
+                  selectedStateFromFilter={selectedRegion}
+                />
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -298,6 +357,8 @@ function IndiaMap({
               onStateClick={handleStateClick}
               onStoryClick={handleStoryClick}
               focusedState={focusedState}
+              onResetFilters={handleResetFilters}
+              selectedStateFromFilter={selectedRegion}
             />
           )}
         </>
@@ -320,7 +381,7 @@ function IndiaMap({
                   <div className="flex items-center gap-2 mb-2">
                     <FaMapMarkerAlt className="text-gray-400 text-sm" />
                     <span className="text-sm text-gray-600">
-                      {selectedStory.region_name || 'Unknown Location'}
+                      {selectedStory.village_name || selectedStory.panchayat_name || selectedStory.block_name || selectedStory.district_name || selectedStory.state_name || 'Unknown Location'}
                     </span>
                   </div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -356,7 +417,7 @@ function IndiaMap({
                 </div>
                 <button
                   onClick={() => {
-                    const slug = `${selectedStory.id}-${generateSlug(selectedStory.title)}`
+                    const slug = selectedStory.slug || generateSlug(selectedStory.title)
                     navigate(`/stories/${slug}`)
                     setSelectedStory(null)
                   }}

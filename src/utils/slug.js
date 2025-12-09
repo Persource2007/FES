@@ -20,19 +20,30 @@ export function generateSlug(text) {
 /**
  * Extract story ID from slug or return slug as ID
  * @param {string} slugOrId - Slug or ID
- * @returns {number|null} - Story ID or null
+ * @returns {number|null} - Story ID or null (deprecated - now returns slug)
  */
 export function getStoryIdFromSlug(slugOrId) {
-  // If it's a number, return it
+  // If it's a number, return it (for backward compatibility)
   const id = parseInt(slugOrId, 10)
-  if (!isNaN(id)) {
+  if (!isNaN(id) && slugOrId.toString() === id.toString()) {
     return id
   }
-  // Otherwise, try to extract ID from slug (format: id-title-slug)
-  const match = slugOrId.match(/^(\d+)-/)
-  if (match) {
-    return parseInt(match[1], 10)
-  }
+  // Otherwise, it's a slug - return null (slug will be used directly)
   return null
+}
+
+/**
+ * Get story slug from URL parameter
+ * @param {string} slugOrId - Slug or ID from URL
+ * @returns {string} - The slug
+ */
+export function getStorySlug(slugOrId) {
+  // If it's a number, it's an old format - return null to use ID endpoint
+  const id = parseInt(slugOrId, 10)
+  if (!isNaN(id) && slugOrId.toString() === id.toString()) {
+    return null // Use ID endpoint for backward compatibility
+  }
+  // Otherwise, it's a slug
+  return slugOrId
 }
 

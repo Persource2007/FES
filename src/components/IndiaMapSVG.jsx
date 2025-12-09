@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { FaMapMarkerAlt } from 'react-icons/fa'
+import { useState, useEffect, useRef } from 'react'
+import { FaMapMarkerAlt, FaTimes, FaPlus, FaMinus } from 'react-icons/fa'
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps'
 import { geoBounds } from 'd3-geo'
 
@@ -62,13 +62,15 @@ const STATE_COORDINATES = {
   'Puducherry': { x: 370, y: 850 }, // Approximate - near Tamil Nadu
 }
 
-function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState: externalFocusedState }) {
+function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState: externalFocusedState, onResetFilters, selectedStateFromFilter }) {
   const [tooltip, setTooltip] = useState(null)
+  const tooltipTimeoutRef = useRef(null)
   const [geoData, setGeoData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedState, setExpandedState] = useState(null) // State showing individual story markers
   const [zoomState, setZoomState] = useState({ center: [77.5, 22], zoom: 1 })
+  const [stateSizes, setStateSizes] = useState({}) // Store calculated state sizes
   
   // Use external focusedState if provided, otherwise use expandedState
   const activeFocusedState = externalFocusedState || expandedState
@@ -76,6 +78,49 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
     center: [77.5, 22], // Approximate center of India
     scale: 650, // Reduced scale for smaller default map
   })
+  
+  // Calculate state sizes from GeoJSON data
+  useEffect(() => {
+    if (geoData && geoData.features) {
+      const sizes = {}
+      geoData.features.forEach((feature) => {
+        const stateName = feature.properties?.name || feature.properties?.NAME_1 || ''
+        if (stateName) {
+          try {
+            const bounds = geoBounds(feature)
+            const [[x0, y0], [x1, y1]] = bounds
+            // Calculate approximate area (in square degrees, as a proxy)
+            const width = x1 - x0
+            const height = y1 - y0
+            const area = width * height
+            sizes[stateName] = area
+          } catch (e) {
+            // If bounds calculation fails, use default size
+            sizes[stateName] = 1
+          }
+        }
+      })
+      setStateSizes(sizes)
+    }
+  }, [geoData])
+  
+  // Calculate marker size based on state area
+  const getMarkerSize = (stateName) => {
+    const area = stateSizes[stateName] || 1
+    // Find min and max areas for normalization
+    const areas = Object.values(stateSizes)
+    if (areas.length === 0) return 20 // Default size
+    
+    const minArea = Math.min(...areas)
+    const maxArea = Math.max(...areas)
+    
+    // Normalize to size range: 16px (small states) to 32px (large states)
+    if (maxArea === minArea) return 20 // All same size
+    
+    const normalized = (area - minArea) / (maxArea - minArea)
+    const size = 16 + (normalized * 16) // Range: 16-32px
+    return Math.round(size)
+  }
 
   // Load GeoJSON data and calculate bounding box
   useEffect(() => {
@@ -83,10 +128,11 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
       try {
         setLoading(true)
         
-        // If external focusedState is provided, load individual state file
+        // If external focusedState or expandedState is provided, load individual state file
+        const stateToLoad = externalFocusedState || expandedState
         let url = '/india-map.geojson'
-        if (externalFocusedState) {
-          const stateFileName = STATE_NAME_MAPPINGS[externalFocusedState] || getStateFileName(externalFocusedState)
+        if (stateToLoad) {
+          const stateFileName = STATE_NAME_MAPPINGS[stateToLoad] || getStateFileName(stateToLoad)
           if (stateFileName) {
             url = `/states/${stateFileName}.json`
           }
@@ -130,32 +176,67 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
           const maxRange = Math.max(lonRange, latRange)
           let calculatedScale
           
-          if (externalFocusedState) {
-            // For single state in square container, calculate scale to fill the container
-            // The container is square (aspect-square, max-w-lg = 512px)
-            // Calculate scale to maximize map size while fitting in square
-            const aspectRatio = lonRange / latRange
+          if (stateToLoad) {
+            // For single state, calculate scale to fit within the actual container with padding
+            // Container dimensions: h-96 (384px) on mobile, lg:h-[600px] (600px) on large screens
+            // Width is flex-1 (varies based on viewport and filter sidebar)
             
-            // Use a more direct calculation - fit the larger dimension with minimal padding
-            const paddingFactor = 0.92 // 8% padding for better visual appearance
-            const baseContainerSize = 512 // max-w-lg in pixels
+            // Default container dimensions (conservative estimates)
+            // On large screens: ~600px height, width varies but typically 800-1200px
+            const containerHeight = 600 // lg:h-[600px]
+            const containerWidth = 900 // Estimated flex-1 width on large screens (conservative)
             
-            // Calculate scale based on which dimension is larger
-            // For Mercator projection, we need to account for the projection scaling
+            // Padding on all sides (top, bottom, left, right) - 8% on each side = 16% total
+            const paddingPercent = 0.16 // 16% total padding (8% each side)
+            const availableWidth = containerWidth * (1 - paddingPercent)
+            const availableHeight = containerHeight * (1 - paddingPercent)
+            
+            // Account for Mercator projection distortion at different latitudes
+            // Mercator stretches horizontally as you move away from equator
+            const latAdjustment = Math.cos((centerLat * Math.PI) / 180)
+            const adjustedLonRange = lonRange * latAdjustment
+            
+            // Calculate scale based on which dimension constrains the view
+            // We need to fit the state's bounding box (with padding) into the available container space
             let scaleMultiplier
             
-            if (aspectRatio > 1.0) {
-              // State is wider - fit longitude range to container width
-              // Scale calculation: container width / longitude range * projection factor
-              scaleMultiplier = (baseContainerSize * paddingFactor) / lonRange * 120
-            } else {
-              // State is taller - fit latitude range to container height
-              // Scale calculation: container height / latitude range * projection factor
-              scaleMultiplier = (baseContainerSize * paddingFactor) / latRange * 120
-            }
+            // Compare adjusted aspect ratios
+            const adjustedStateAspectRatio = adjustedLonRange / latRange
+            const availableAspectRatio = availableWidth / availableHeight
             
-            // Increased scale range to make map larger - allow up to 2000 for very small states
-            calculatedScale = Math.max(600, Math.min(2000, scaleMultiplier))
+            // Calculate scale for both dimensions and use the smaller one to ensure it fits
+            const scaleForWidth = (availableWidth / adjustedLonRange) * 100
+            const scaleForHeight = (availableHeight / latRange) * 100
+            
+            // Use the smaller scale to ensure the state fits in both dimensions
+            scaleMultiplier = Math.min(scaleForWidth, scaleForHeight)
+            
+            // For state files, the coordinates might be in a different scale than the full India map
+            // State files typically have coordinates that are more zoomed in, so we need a higher scale
+            // Multiply by a factor to account for the difference in coordinate ranges
+            // State files usually have coordinates in a smaller range, so we need larger scale values
+            const stateFileScaleFactor = 8 // Adjust this based on actual state file coordinate ranges
+            
+            scaleMultiplier = scaleMultiplier * stateFileScaleFactor
+            
+            // Clamp scale to reasonable bounds, but allow higher values for state files
+            calculatedScale = Math.max(800, Math.min(5000, scaleMultiplier))
+            
+            console.log('State scale calculation:', {
+              lonRange,
+              latRange,
+              adjustedLonRange,
+              centerLat,
+              latAdjustment,
+              scaleForWidth,
+              scaleForHeight,
+              scaleMultiplier,
+              calculatedScale,
+              containerWidth,
+              containerHeight,
+              availableWidth,
+              availableHeight
+            })
           } else {
             // For full map, use smaller scale
             calculatedScale = Math.max(500, Math.min(900, 750 / maxRange * 100))
@@ -167,12 +248,12 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
           })
           
           // Set zoom state for single state view - keep zoom at 1 to fit the state
-          if (externalFocusedState && data.features.length === 1) {
+          if (stateToLoad && data.features.length === 1) {
             const bounds = geoBounds(data.features[0])
             const [[x0, y0], [x1, y1]] = bounds
             const stateCenterLon = (x0 + x1) / 2
             const stateCenterLat = (y0 + y1) / 2
-            // Keep zoom at 1 to ensure state fits within square container
+            // Keep zoom at 1 to ensure state fits within container
             // The scale calculation above handles the fitting
             setZoomState({ center: [stateCenterLon, stateCenterLat], zoom: 1 })
           }
@@ -180,7 +261,10 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
           console.log('Map bounds calculated:', {
             minLon, maxLon, minLat, maxLat,
             center: [centerLon, centerLat],
-            scale: calculatedScale
+            scale: calculatedScale,
+            lonRange,
+            latRange,
+            stateToLoad
           })
         }
         
@@ -194,48 +278,37 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
     }
 
     loadGeoJSON()
-  }, [externalFocusedState])
-
-  // Effect to handle expandedState changes (for internal expansion, not external focusedState)
-  // External focusedState is handled in the loadGeoJSON effect above
-  useEffect(() => {
-    if (expandedState && geoData && !externalFocusedState) {
-      const expandedGeo = geoData.features.find(
-        (geo) =>
-          (geo.properties?.name && geo.properties.name === expandedState) ||
-          (geo.properties?.NAME_1 && geo.properties.NAME_1 === expandedState)
-      )
-
-      if (expandedGeo) {
-        const bounds = geoBounds(expandedGeo)
-        const [[x0, y0], [x1, y1]] = bounds
-        const centerLon = (x0 + x1) / 2
-        const centerLat = (y0 + y1) / 2
-
-        // Calculate zoom level to fit the state
-        const width = x1 - x0
-        const height = y1 - y0
-        const maxDim = Math.max(width, height)
-        const newZoom = Math.min(3, Math.max(1.5, 2.5 / (maxDim / 20)))
-
-        setZoomState({ center: [centerLon, centerLat], zoom: newZoom })
-        
-        // Update projection config for expanded state
-        const lonRange = x1 - x0
-        const latRange = y1 - y0
-        const maxRange = Math.max(lonRange, latRange)
-        const calculatedScale = Math.max(1200, Math.min(2000, 1500 / maxRange * 15))
-        
-        setProjectionConfig({
-          center: [centerLon, centerLat],
-          scale: calculatedScale,
-        })
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (tooltipTimeoutRef.current) {
+        clearTimeout(tooltipTimeoutRef.current)
       }
-    } else if (!expandedState && !externalFocusedState) {
+    }
+  }, [externalFocusedState, expandedState])
+
+  // Reset to full map view when expandedState is cleared
+  useEffect(() => {
+    if (!expandedState && !externalFocusedState) {
       // Reset to initial view only if no external focusedState
       setZoomState({ center: [77.5, 22], zoom: 1 })
+      setTooltip(null) // Clear tooltip when returning to main map
     }
-  }, [expandedState, geoData, externalFocusedState])
+  }, [expandedState, externalFocusedState])
+  
+  // Sync expandedState with selectedStateFromFilter (from left filter)
+  useEffect(() => {
+    if (selectedStateFromFilter && !externalFocusedState) {
+      // If a state is selected in the filter, expand it on the map
+      const stateStories = storiesByRegion[selectedStateFromFilter] || []
+      if (stateStories.length > 0) {
+        setExpandedState(selectedStateFromFilter)
+      }
+    } else if (!selectedStateFromFilter && !externalFocusedState) {
+      // If filter is cleared, collapse the expanded state
+      setExpandedState(null)
+    }
+  }, [selectedStateFromFilter, externalFocusedState, storiesByRegion])
 
   // Get markers for states that have stories
   const getMarkers = () => {
@@ -310,7 +383,7 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
             zoom={zoomState.zoom}
             minZoom={externalFocusedState ? zoomState.zoom : (activeFocusedState ? 1 : 0.1)}
             maxZoom={externalFocusedState ? zoomState.zoom : (activeFocusedState ? 8 : 5)}
-            filterZoomEvent={() => !externalFocusedState}
+            filterZoomEvent={() => false}
             onMoveEnd={externalFocusedState ? undefined : ((position) => {
               setZoomState({ center: position.coordinates, zoom: position.zoom })
             })}
@@ -397,48 +470,67 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
               return (
                 <Marker key={name} coordinates={[lon, lat]}>
                   <g
-                    onMouseEnter={(e) => {
-                      const rect = e.currentTarget.closest('svg')?.getBoundingClientRect()
-                      if (rect) {
-                        setTooltip({
-                          name,
-                          count,
-                          x: e.clientX - rect.left,
-                          y: e.clientY - rect.top,
-                        })
-                      }
-                    }}
-                    onMouseLeave={() => setTooltip(null)}
                     onClick={(e) => {
                       e.stopPropagation()
-                      // If there's only one story, navigate to it
-                      if (regionStories.length === 1 && onStoryClick) {
-                        onStoryClick(regionStories[0])
-                      } else if (regionStories.length > 1) {
-                        // Multiple stories: expand to show individual markers
-                        setExpandedState(name)
-                      } else if (onStateClick) {
-                        onStateClick(name)
+                      const rect = e.currentTarget.closest('svg')?.getBoundingClientRect()
+                      if (rect) {
+                        // If only one story, show tooltip with story details
+                        if (regionStories.length === 1) {
+                          const story = regionStories[0]
+                          setTooltip({
+                            name: story.title,
+                            count: 1,
+                            story: story,
+                            x: e.clientX - rect.left,
+                            y: e.clientY - rect.top,
+                          })
+                        } else if (regionStories.length > 1) {
+                          // Multiple stories: expand to show individual markers
+                          setTooltip(null) // Clear any existing tooltip
+                          setExpandedState(name)
+                          // Also update the filter on the left side
+                          if (onStateClick) {
+                            onStateClick(name)
+                          }
+                        } else if (onStateClick) {
+                          onStateClick(name)
+                        }
                       }
                     }}
                     className="cursor-pointer"
                   >
-                    <circle
-                      r="10"
-                      fill="#dc2626"
-                      stroke="#fff"
-                      strokeWidth="2"
-                      className="animate-pulse"
-                    />
-                    <text
-                      textAnchor="middle"
-                      y="4"
-                      fontSize="14"
-                      fill="#fff"
-                      fontWeight="bold"
-                    >
-                      {count}
-                    </text>
+                    {/* Use individual marker if only one story, otherwise use state marker with proportional sizing */}
+                    {(() => {
+                      const markerSize = getMarkerSize(name)
+                      const halfSize = markerSize / 2
+                      
+                      // If only one story, use individual marker with proportional sizing
+                      if (regionStories.length === 1) {
+                        return (
+                          <image
+                            href="/images/individual-marker.svg"
+                            x={-halfSize}
+                            y={-markerSize}
+                            width={markerSize}
+                            height={markerSize}
+                            className="drop-shadow-lg hover:opacity-90 transition-opacity"
+                            preserveAspectRatio="xMidYMid meet"
+                          />
+                        )
+                      }
+                      // For multiple stories, use state marker with proportional sizing
+                      return (
+                        <image
+                          href="/images/state-marker.svg"
+                          x={-halfSize}
+                          y={-markerSize}
+                          width={markerSize}
+                          height={markerSize}
+                          className="drop-shadow-lg"
+                          preserveAspectRatio="xMidYMid meet"
+                        />
+                      )
+                    })()}
                   </g>
                 </Marker>
               )
@@ -465,9 +557,11 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
                   return (
                     <Marker key={`story-${story.id}`} coordinates={[offsetLon, offsetLat]}>
                       <g
-                        onMouseEnter={(e) => {
+                        onClick={(e) => {
+                          e.stopPropagation()
                           const rect = e.currentTarget.closest('svg')?.getBoundingClientRect()
                           if (rect) {
+                            // Show tooltip on click
                             setTooltip({
                               name: story.title,
                               count: 1,
@@ -477,32 +571,18 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
                             })
                           }
                         }}
-                        onMouseLeave={() => setTooltip(null)}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (onStoryClick) {
-                            onStoryClick(story)
-                            setExpandedState(null) // Reset expansion after navigation
-                          }
-                        }}
                         className="cursor-pointer"
                       >
-                        <circle
-                          r="8"
-                          fill="#ef4444"
-                          stroke="#fff"
-                          strokeWidth="2"
-                          className="hover:r-10 transition-all"
+                        {/* Individual marker image */}
+                        <image
+                          href="/images/individual-marker.svg"
+                          x="-12"
+                          y="-24"
+                          width="24"
+                          height="24"
+                          className="drop-shadow-lg hover:opacity-90 transition-opacity"
+                          preserveAspectRatio="xMidYMid meet"
                         />
-                        <text
-                          textAnchor="middle"
-                          y="3"
-                          fontSize="12"
-                          fill="#fff"
-                          fontWeight="bold"
-                        >
-                          {index + 1}
-                        </text>
                       </g>
                     </Marker>
                   )
@@ -512,13 +592,48 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
           </ZoomableGroup>
         </ComposableMap>
 
+      {/* Zoom Controls */}
+      <div className="absolute top-4 right-4 z-30 flex flex-col gap-2">
+        <button
+          onClick={() => {
+            const currentZoom = zoomState.zoom
+            const maxZoom = externalFocusedState ? zoomState.zoom : (activeFocusedState ? 8 : 5)
+            const newZoom = Math.min(maxZoom, currentZoom * 1.5)
+            setZoomState({ ...zoomState, zoom: newZoom })
+          }}
+          className="bg-white rounded-lg shadow-lg px-3 py-2 border border-gray-300 hover:bg-gray-50 transition-colors flex items-center justify-center text-gray-700 hover:text-gray-900"
+          title="Zoom In"
+          disabled={externalFocusedState}
+        >
+          <FaPlus className="text-sm" />
+        </button>
+        <button
+          onClick={() => {
+            const currentZoom = zoomState.zoom
+            const minZoom = externalFocusedState ? zoomState.zoom : (activeFocusedState ? 1 : 0.1)
+            const newZoom = Math.max(minZoom, currentZoom / 1.5)
+            setZoomState({ ...zoomState, zoom: newZoom })
+          }}
+          className="bg-white rounded-lg shadow-lg px-3 py-2 border border-gray-300 hover:bg-gray-50 transition-colors flex items-center justify-center text-gray-700 hover:text-gray-900"
+          title="Zoom Out"
+          disabled={externalFocusedState}
+        >
+          <FaMinus className="text-sm" />
+        </button>
+      </div>
+
       {/* Reset button when expanded (only show for internal expansion, not external focus) */}
       {expandedState && !externalFocusedState && (
-        <div className="absolute top-4 right-4 z-20">
+        <div className="absolute top-4 right-4 z-20" style={{ top: '120px' }}>
           <button
             onClick={() => {
               setExpandedState(null)
+              setTooltip(null) // Clear tooltip when resetting
               setZoomState({ center: [77.5, 22], zoom: 1 })
+              // Clear filters on the left side
+              if (onResetFilters) {
+                onResetFilters()
+              }
               // Reset projection config
               if (geoData) {
                 let minLon = Infinity, maxLon = -Infinity
@@ -562,20 +677,171 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
       )}
 
       {/* Tooltip */}
-      {tooltip && (
+      {tooltip && tooltip.story && (
         <div
-          className="absolute bg-white border border-green-300 rounded-lg shadow-lg px-3 py-2 z-10 pointer-events-auto"
+          className="absolute bg-white rounded-lg shadow-2xl z-50 pointer-events-auto"
           style={{
             left: `${tooltip.x}px`,
-            top: `${tooltip.y - 10}px`,
-            transform: 'translate(-50%, -100%)',
+            top: `${tooltip.y + 15}px`,
+            transform: 'translateX(-50%)',
+            width: '320px',
+            maxWidth: 'calc(100vw - 40px)',
           }}
         >
-          <div className="text-sm font-semibold text-green-800">
-            {tooltip.story ? tooltip.story.title : tooltip.name}
+          {/* Tooltip pointer pointing to marker */}
+          <div
+            className="absolute"
+            style={{
+              left: '50%',
+              top: '-8px',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '8px solid transparent',
+              borderRight: '8px solid transparent',
+              borderBottom: '8px solid white',
+              filter: 'drop-shadow(0 -2px 2px rgba(0, 0, 0, 0.1))',
+            }}
+          />
+          <div className="flex">
+            {/* Left Panel - Content */}
+            <div className="flex-1 p-3 pr-2">
+              {/* Title - Limited to 2 lines */}
+              <h3 className="text-sm font-bold text-black mb-1.5 line-clamp-2">
+                {tooltip.story.title}
+              </h3>
+              
+              {/* Category - Under title */}
+              {tooltip.story.category_name && (
+                <div className="mb-2">
+                  <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-md">
+                    {tooltip.story.category_name}
+                  </span>
+                </div>
+              )}
+              
+              {/* Location with map pin icon */}
+              {(tooltip.story.village_name || tooltip.story.panchayat_name || tooltip.story.block_name || tooltip.story.district_name || tooltip.story.state_name) && (
+                <div className="flex items-center gap-1.5 mb-2 text-xs text-gray-700">
+                  <FaMapMarkerAlt className="text-xs text-gray-500" />
+                  <span>
+                    {[tooltip.story.village_name, tooltip.story.panchayat_name, tooltip.story.block_name, tooltip.story.district_name, tooltip.story.state_name].filter(Boolean).join(', ')}
+                  </span>
+                </div>
+              )}
+              
+              {/* Description/Content */}
+              {tooltip.story.content && (
+                <p className="text-xs text-gray-700 mb-2 line-clamp-2">
+                  {tooltip.story.content}
+                </p>
+              )}
+              
+              {/* Read more link */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (onStoryClick) {
+                    onStoryClick(tooltip.story)
+                    setTooltip(null)
+                  }
+                }}
+                className="text-xs text-gray-700 hover:text-gray-900 font-medium flex items-center gap-1"
+              >
+                Read more <span>&gt;</span>
+              </button>
+            </div>
+            
+            {/* Right Panel */}
+            <div className="w-24 flex flex-col items-end p-3 pl-2">
+              {/* Close button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setTooltip(null)
+                }}
+                className="text-gray-400 hover:text-gray-600 mb-2"
+              >
+                <FaTimes className="text-base" />
+              </button>
+              
+              {/* Image placeholder */}
+              <div className="w-full aspect-square bg-gray-200 rounded-md overflow-hidden relative">
+                {tooltip.story.photo_url ? (
+                  <img
+                    src={tooltip.story.photo_url}
+                    alt={tooltip.story.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                      const placeholder = e.target.nextElementSibling
+                      if (placeholder) {
+                        placeholder.style.display = 'block'
+                      }
+                    }}
+                  />
+                ) : null}
+                <img
+                  src="/people/people1.png"
+                  alt="Placeholder"
+                  className="w-full h-full object-cover"
+                  style={{ 
+                    display: tooltip.story.photo_url ? 'none' : 'block'
+                  }}
+                />
+              </div>
+            </div>
           </div>
-          <div className="text-xs text-gray-600">
-            {tooltip.story ? 'Click to view story' : `${tooltip.count} ${tooltip.count === 1 ? 'story' : 'stories'}`}
+        </div>
+      )}
+      
+      {/* State aggregate tooltip (for states with multiple stories) */}
+      {tooltip && !tooltip.story && (
+        <div
+          className="absolute bg-white border border-green-300 rounded-lg shadow-xl px-4 py-3 z-50 pointer-events-auto max-w-xs"
+          style={{
+            left: `${tooltip.x}px`,
+            top: `${tooltip.y + 15}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {/* Tooltip pointer pointing to marker */}
+          <div
+            className="absolute"
+            style={{
+              left: '50%',
+              top: '-8px',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '8px solid transparent',
+              borderRight: '8px solid transparent',
+              borderBottom: '8px solid white',
+              filter: 'drop-shadow(0 -2px 2px rgba(0, 0, 0, 0.1))',
+            }}
+          />
+          {/* Border pointer for state tooltip */}
+          <div
+            className="absolute"
+            style={{
+              left: '50%',
+              top: '-9px',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '9px solid transparent',
+              borderRight: '9px solid transparent',
+              borderBottom: '9px solid #86efac',
+              zIndex: -1,
+            }}
+          />
+          <div>
+            <div className="text-sm font-semibold text-green-800">
+              {tooltip.name}
+            </div>
+            <div className="text-xs text-gray-600">
+              {tooltip.count} {tooltip.count === 1 ? 'story' : 'stories'}
+            </div>
           </div>
         </div>
       )}
@@ -584,13 +850,25 @@ function IndiaMapSVG({ storiesByRegion, onStateClick, onStoryClick, focusedState
       {!externalFocusedState && (
         <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-md p-3 border border-green-200">
           <div className="text-xs font-semibold text-green-800 mb-2">
-            {activeFocusedState ? `Showing: ${activeFocusedState}` : 'States with Stories'}
+            {activeFocusedState ? `Showing: ${activeFocusedState}` : 'Story Markers'}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-red-600 border-2 border-white"></div>
-            <span className="text-xs text-gray-700">
-              {activeFocusedState ? 'Individual story markers' : 'Story markers'}
-            </span>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <img 
+                src="/images/individual-marker.svg" 
+                alt="Individual story marker" 
+                className="w-5 h-5"
+              />
+              <span className="text-xs text-gray-700">Single Story</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <img 
+                src="/images/state-marker.svg" 
+                alt="State marker" 
+                className="w-5 h-5"
+              />
+              <span className="text-xs text-gray-700">Multiple Stories</span>
+            </div>
           </div>
         </div>
       )}

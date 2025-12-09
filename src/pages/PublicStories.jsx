@@ -108,7 +108,7 @@ function PublicStories() {
                     </p>
                     <button
                       onClick={() => {
-                        const slug = `${story.id}-${generateSlug(story.title)}`
+                        const slug = story.slug || generateSlug(story.title)
                         navigate(`/stories/${slug}`)
                       }}
                       className="flex items-center gap-2 text-slate-700 font-medium hover:text-slate-900 transition-colors"

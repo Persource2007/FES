@@ -51,7 +51,8 @@ export const API_ENDPOINTS = {
   // Story endpoints
   STORIES: {
     PUBLISHED: '/api/stories/published', // Public endpoint
-    GET: (id) => `/api/stories/${id}`, // Public endpoint - get single story
+    GET: (id) => `/api/stories/${id}`, // Public endpoint - get single story by ID (backward compatibility)
+    GET_BY_SLUG: (slug) => `/api/stories/slug/${slug}`, // Public endpoint - get single story by slug
     CREATE: '/api/stories',
     PENDING: '/api/stories/pending',
     PENDING_COUNT: '/api/stories/pending/count',

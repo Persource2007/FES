@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\PermissionHelper;
+use App\Helpers\SlugHelper;
 use App\Models\Story;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -18,6 +20,87 @@ use Illuminate\Support\Facades\Validator;
  */
 class StoryController extends Controller
 {
+    /**
+     * Get base select fields for stories
+     * Conditionally includes new location fields if columns exist
+     * 
+     * @return array
+     */
+    private function getStorySelectFields($includeUserFields = true, $includeCategoryFields = true): array
+    {
+        $fields = [
+            'stories.id',
+            'stories.title',
+            'stories.subtitle',
+            'stories.photo_url',
+            'stories.quote',
+            'stories.person_name',
+            'stories.person_location',
+            'stories.facilitator_name',
+            'stories.facilitator_organization',
+            'stories.description',
+            'stories.content',
+            'stories.status',
+            'stories.created_at',
+        ];
+        
+        // Add slug if column exists
+        if (Schema::hasColumn('stories', 'slug')) {
+            $fields[] = 'stories.slug';
+        }
+        
+        // Add published_at if column exists
+        if (Schema::hasColumn('stories', 'published_at')) {
+            $fields[] = 'stories.published_at';
+        }
+        
+        // Add approved_at if column exists
+        if (Schema::hasColumn('stories', 'approved_at')) {
+            $fields[] = 'stories.approved_at';
+        }
+        
+        // Add approved_by if column exists
+        if (Schema::hasColumn('stories', 'approved_by')) {
+            $fields[] = 'stories.approved_by';
+        }
+        
+        // Add new location fields if columns exist
+        if (Schema::hasColumn('stories', 'state_id')) {
+            $fields = array_merge($fields, [
+                'stories.state_id',
+                'stories.state_name',
+                'stories.district_id',
+                'stories.district_name',
+                'stories.sub_district_id',
+                'stories.sub_district_name',
+                'stories.block_id',
+                'stories.block_name',
+                'stories.panchayat_id',
+                'stories.panchayat_name',
+                'stories.village_id',
+                'stories.village_name',
+            ]);
+        }
+        
+        // Add user fields if requested
+        if ($includeUserFields) {
+            $fields = array_merge($fields, [
+                'users.id as user_id',
+                'users.name as author_name',
+                'users.email as author_email',
+            ]);
+        }
+        
+        // Add category fields if requested
+        if ($includeCategoryFields) {
+            $fields = array_merge($fields, [
+                'story_categories.id as category_id',
+                'story_categories.name as category_name',
+            ]);
+        }
+        
+        return $fields;
+    }
     /**
      * Get all published stories (Public endpoint)
      * 
@@ -29,39 +112,14 @@ class StoryController extends Controller
             $stories = DB::table('stories')
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
-                ->leftJoin('category_regions', 'story_categories.id', '=', 'category_regions.category_id')
-                ->leftJoin('regions', 'category_regions.region_id', '=', 'regions.id')
                 ->where('stories.status', 'published')
-                ->select(
-                    'stories.id',
-                    'stories.title',
-                    'stories.content',
-                    'stories.status',
-                    'stories.created_at',
-                    'stories.published_at',
-                    'users.name as author_name',
-                    'story_categories.id as category_id',
-                    'story_categories.name as category_name',
-                    'regions.id as region_id',
-                    'regions.name as region_name',
-                    'regions.code as region_code'
-                )
+                ->select($this->getStorySelectFields())
                 ->orderBy('stories.published_at', 'desc')
                 ->get();
 
-            // If a category has multiple regions, we'll get duplicate stories
-            // Group by story ID and take the first region (or handle multiple regions if needed)
-            $uniqueStories = [];
-            foreach ($stories as $story) {
-                $storyId = $story->id;
-                if (!isset($uniqueStories[$storyId])) {
-                    $uniqueStories[$storyId] = $story;
-                }
-            }
-
             return $this->successResponse([
-                'stories' => array_values($uniqueStories),
-                'count' => count($uniqueStories),
+                'stories' => $stories,
+                'count' => count($stories),
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching published stories', [
@@ -77,7 +135,75 @@ class StoryController extends Controller
     }
 
     /**
-     * Get a single published story by ID (Public endpoint)
+     * Get a single published story by slug (Public endpoint)
+     * 
+     * @param string $slug
+     * @return JsonResponse
+     */
+    public function getPublishedStoryBySlug(string $slug): JsonResponse
+    {
+        try {
+            $story = DB::table('stories')
+                ->join('users', 'stories.user_id', '=', 'users.id')
+                ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
+                ->where('stories.slug', $slug)
+                ->where('stories.status', 'published')
+                ->select(
+                    'stories.id',
+                    'stories.title',
+                    'stories.slug',
+                    'stories.subtitle',
+                    'stories.photo_url',
+                    'stories.quote',
+                    'stories.person_name',
+                    'stories.person_location',
+                    'stories.facilitator_name',
+                    'stories.facilitator_organization',
+                    'stories.state_id',
+                    'stories.state_name',
+                    'stories.district_id',
+                    'stories.district_name',
+                    'stories.sub_district_id',
+                    'stories.sub_district_name',
+                    'stories.block_id',
+                    'stories.block_name',
+                    'stories.panchayat_id',
+                    'stories.panchayat_name',
+                    'stories.village_id',
+                    'stories.village_name',
+                    'stories.description',
+                    'stories.content',
+                    'stories.status',
+                    'stories.created_at',
+                    'stories.published_at',
+                    'users.name as author_name',
+                    'story_categories.id as category_id',
+                    'story_categories.name as category_name'
+                )
+                ->first();
+
+            if (!$story) {
+                return $this->errorResponse('Published story not found', 404);
+            }
+
+            return $this->successResponse([
+                'story' => $story,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching single published story by slug', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse(
+                'An error occurred while fetching the story',
+                500
+            );
+        }
+    }
+
+    /**
+     * Get a single published story by ID (Public endpoint - for backward compatibility)
      * 
      * @param int $id
      * @return JsonResponse
@@ -88,24 +214,9 @@ class StoryController extends Controller
             $story = DB::table('stories')
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
-                ->leftJoin('category_regions', 'story_categories.id', '=', 'category_regions.category_id')
-                ->leftJoin('regions', 'category_regions.region_id', '=', 'regions.id')
                 ->where('stories.id', $id)
                 ->where('stories.status', 'published')
-                ->select(
-                    'stories.id',
-                    'stories.title',
-                    'stories.content',
-                    'stories.status',
-                    'stories.created_at',
-                    'stories.published_at',
-                    'users.name as author_name',
-                    'story_categories.id as category_id',
-                    'story_categories.name as category_name',
-                    'regions.id as region_id',
-                    'regions.name as region_name',
-                    'regions.code as region_code'
-                )
+                ->select($this->getStorySelectFields())
                 ->first();
 
             if (!$story) {
@@ -168,18 +279,7 @@ class StoryController extends Controller
                 }
             }
 
-            $stories = $query->select(
-                    'stories.id',
-                    'stories.title',
-                    'stories.content',
-                    'stories.status',
-                    'stories.created_at',
-                    'users.id as user_id',
-                    'users.name as author_name',
-                    'users.email as author_email',
-                    'story_categories.id as category_id',
-                    'story_categories.name as category_name'
-                )
+            $stories = $query->select($this->getStorySelectFields())
                 ->orderBy('stories.created_at', 'desc')
                 ->get();
 
@@ -268,6 +368,26 @@ class StoryController extends Controller
             $validator = Validator::make($request->all(), [
                 'category_id' => 'required|integer|exists:story_categories,id',
                 'title' => 'required|string|max:255',
+                'subtitle' => 'nullable|string|max:255',
+                'photo_url' => 'nullable|string|max:500',
+                'quote' => 'nullable|string',
+                'person_name' => 'nullable|string|max:255',
+                'person_location' => 'nullable|string|max:255',
+                'facilitator_name' => 'nullable|string|max:255',
+                'facilitator_organization' => 'nullable|string|max:255',
+                'state_id' => 'required|string|max:255',
+                'state_name' => 'nullable|string|max:255',
+                'district_id' => 'nullable|string|max:255',
+                'district_name' => 'nullable|string|max:255',
+                'sub_district_id' => 'nullable|string|max:255',
+                'sub_district_name' => 'nullable|string|max:255',
+                'block_id' => 'nullable|string|max:255',
+                'block_name' => 'nullable|string|max:255',
+                'panchayat_id' => 'nullable|string|max:255',
+                'panchayat_name' => 'nullable|string|max:255',
+                'village_id' => 'nullable|string|max:255',
+                'village_name' => 'nullable|string|max:255',
+                'description' => 'nullable|string',
                 'content' => 'required|string',
             ]);
 
@@ -336,11 +456,35 @@ class StoryController extends Controller
                 return $this->errorResponse('Category not found or inactive', 404);
             }
 
+            // Generate unique slug from title
+            $slug = SlugHelper::generateUniqueSlug($request->title);
+
             // Create story with pending status
             $story = Story::create([
                 'user_id' => $userId,
                 'category_id' => $request->category_id,
                 'title' => $request->title,
+                'slug' => $slug,
+                'subtitle' => $request->input('subtitle'),
+                'photo_url' => $request->input('photo_url'),
+                'quote' => $request->input('quote'),
+                'person_name' => $request->input('person_name'),
+                'person_location' => $request->input('person_location'),
+                'facilitator_name' => $request->input('facilitator_name'),
+                'facilitator_organization' => $request->input('facilitator_organization'),
+                'state_id' => $request->input('state_id'),
+                'state_name' => $request->input('state_name') ?: null,
+                'district_id' => $request->input('district_id') ?: null,
+                'district_name' => $request->input('district_name') ?: null,
+                'sub_district_id' => $request->input('sub_district_id') ?: null,
+                'sub_district_name' => $request->input('sub_district_name') ?: null,
+                'block_id' => $request->input('block_id') ?: null,
+                'block_name' => $request->input('block_name') ?: null,
+                'panchayat_id' => $request->input('panchayat_id') ?: null,
+                'panchayat_name' => $request->input('panchayat_name') ?: null,
+                'village_id' => $request->input('village_id') ?: null,
+                'village_name' => $request->input('village_name') ?: null,
+                'description' => $request->input('description'),
                 'content' => $request->content,
                 'status' => 'pending',
             ]);
@@ -350,15 +494,7 @@ class StoryController extends Controller
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
                 ->where('stories.id', $story->id)
-                ->select(
-                    'stories.id',
-                    'stories.title',
-                    'stories.content',
-                    'stories.status',
-                    'stories.created_at',
-                    'users.name as author_name',
-                    'story_categories.name as category_name'
-                )
+                ->select($this->getStorySelectFields())
                 ->first();
 
             return $this->successResponse([
@@ -465,6 +601,15 @@ class StoryController extends Controller
                 ->select(
                     'stories.id',
                     'stories.title',
+                    'stories.slug',
+                    'stories.subtitle',
+                    'stories.photo_url',
+                    'stories.quote',
+                    'stories.person_name',
+                    'stories.person_location',
+                    'stories.facilitator_name',
+                    'stories.facilitator_organization',
+                    'stories.description',
                     'stories.content',
                     'stories.status',
                     'stories.approved_at',
@@ -690,20 +835,7 @@ class StoryController extends Controller
                 }
             }
 
-            $stories = $query->select(
-                    'stories.id',
-                    'stories.title',
-                    'stories.content',
-                    'stories.status',
-                    'stories.created_at',
-                    'stories.published_at',
-                    'stories.approved_at',
-                    'users.id as user_id',
-                    'users.name as author_name',
-                    'users.email as author_email',
-                    'story_categories.id as category_id',
-                    'story_categories.name as category_name'
-                )
+            $stories = $query->select($this->getStorySelectFields())
                 ->orderBy('stories.published_at', 'desc')
                 ->get();
 
@@ -765,9 +897,18 @@ class StoryController extends Controller
                 }
             }
 
-            $stories = $query->select(
+            // Build select array - check if new location columns exist
+            $selectFields = [
                     'stories.id',
                     'stories.title',
+                    'stories.subtitle',
+                    'stories.photo_url',
+                    'stories.quote',
+                    'stories.person_name',
+                    'stories.person_location',
+                    'stories.facilitator_name',
+                    'stories.facilitator_organization',
+                    'stories.description',
                     'stories.content',
                     'stories.status',
                     'stories.created_at',
@@ -781,7 +922,28 @@ class StoryController extends Controller
                     'story_categories.name as category_name',
                     'approvers.name as approver_name',
                     'approvers.email as approver_email'
-                )
+                ];
+            
+            // Add new location fields if columns exist
+            $hasLocationColumns = Schema::hasColumn('stories', 'state_id');
+            if ($hasLocationColumns) {
+                $selectFields = array_merge($selectFields, [
+                    'stories.state_id',
+                    'stories.state_name',
+                    'stories.district_id',
+                    'stories.district_name',
+                    'stories.sub_district_id',
+                    'stories.sub_district_name',
+                    'stories.block_id',
+                    'stories.block_name',
+                    'stories.panchayat_id',
+                    'stories.panchayat_name',
+                    'stories.village_id',
+                    'stories.village_name',
+                ]);
+            }
+            
+            $stories = $query->select($selectFields)
                 ->orderBy('stories.published_at', 'desc')
                 ->get();
 
@@ -820,6 +982,26 @@ class StoryController extends Controller
             // Validate request
             $validator = Validator::make($request->all(), [
                 'title' => 'sometimes|string|max:255',
+                'subtitle' => 'sometimes|nullable|string|max:255',
+                'photo_url' => 'sometimes|nullable|string|max:500',
+                'quote' => 'sometimes|nullable|string',
+                'person_name' => 'sometimes|nullable|string|max:255',
+                'person_location' => 'sometimes|nullable|string|max:255',
+                'facilitator_name' => 'sometimes|nullable|string|max:255',
+                'facilitator_organization' => 'sometimes|nullable|string|max:255',
+                'state_id' => 'sometimes|required|string|max:255',
+                'state_name' => 'sometimes|nullable|string|max:255',
+                'district_id' => 'sometimes|nullable|string|max:255',
+                'district_name' => 'sometimes|nullable|string|max:255',
+                'sub_district_id' => 'sometimes|nullable|string|max:255',
+                'sub_district_name' => 'sometimes|nullable|string|max:255',
+                'block_id' => 'sometimes|nullable|string|max:255',
+                'block_name' => 'sometimes|nullable|string|max:255',
+                'panchayat_id' => 'sometimes|nullable|string|max:255',
+                'panchayat_name' => 'sometimes|nullable|string|max:255',
+                'village_id' => 'sometimes|nullable|string|max:255',
+                'village_name' => 'sometimes|nullable|string|max:255',
+                'description' => 'sometimes|nullable|string',
                 'content' => 'sometimes|string',
                 'category_id' => 'sometimes|integer|exists:story_categories,id',
             ]);
@@ -889,6 +1071,68 @@ class StoryController extends Controller
             // Update story
             if ($request->has('title')) {
                 $story->title = $request->title;
+                // Regenerate slug if title changed
+                $story->slug = SlugHelper::generateUniqueSlug($request->title, $story->id);
+            }
+            if ($request->has('subtitle')) {
+                $story->subtitle = $request->subtitle ?: null;
+            }
+            if ($request->has('photo_url')) {
+                $story->photo_url = $request->photo_url ?: null;
+            }
+            if ($request->has('quote')) {
+                $story->quote = $request->quote ?: null;
+            }
+            if ($request->has('person_name')) {
+                $story->person_name = $request->person_name ?: null;
+            }
+            if ($request->has('person_location')) {
+                $story->person_location = $request->person_location ?: null;
+            }
+            if ($request->has('facilitator_name')) {
+                $story->facilitator_name = $request->facilitator_name ?: null;
+            }
+            if ($request->has('facilitator_organization')) {
+                $story->facilitator_organization = $request->facilitator_organization ?: null;
+            }
+            if ($request->has('state_id')) {
+                $story->state_id = $request->state_id;
+            }
+            if ($request->has('state_name')) {
+                $story->state_name = $request->state_name ?: null;
+            }
+            if ($request->has('district_id')) {
+                $story->district_id = $request->district_id ?: null;
+            }
+            if ($request->has('district_name')) {
+                $story->district_name = $request->district_name ?: null;
+            }
+            if ($request->has('sub_district_id')) {
+                $story->sub_district_id = $request->sub_district_id ?: null;
+            }
+            if ($request->has('sub_district_name')) {
+                $story->sub_district_name = $request->sub_district_name ?: null;
+            }
+            if ($request->has('block_id')) {
+                $story->block_id = $request->block_id ?: null;
+            }
+            if ($request->has('block_name')) {
+                $story->block_name = $request->block_name ?: null;
+            }
+            if ($request->has('panchayat_id')) {
+                $story->panchayat_id = $request->panchayat_id ?: null;
+            }
+            if ($request->has('panchayat_name')) {
+                $story->panchayat_name = $request->panchayat_name ?: null;
+            }
+            if ($request->has('village_id')) {
+                $story->village_id = $request->village_id ?: null;
+            }
+            if ($request->has('village_name')) {
+                $story->village_name = $request->village_name ?: null;
+            }
+            if ($request->has('description')) {
+                $story->description = $request->description ?: null;
             }
             if ($request->has('content')) {
                 $story->content = $request->content;
@@ -903,15 +1147,7 @@ class StoryController extends Controller
                 ->join('users', 'stories.user_id', '=', 'users.id')
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
                 ->where('stories.id', $story->id)
-                ->select(
-                    'stories.id',
-                    'stories.title',
-                    'stories.content',
-                    'stories.status',
-                    'stories.published_at',
-                    'users.name as author_name',
-                    'story_categories.name as category_name'
-                )
+                ->select($this->getStorySelectFields())
                 ->first();
 
             return $this->successResponse([

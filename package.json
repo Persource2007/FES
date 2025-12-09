@@ -11,7 +11,9 @@
     "format": "prettier --write \"src/**/*.{js,jsx,json,css}\""
   },
   "dependencies": {
+    "@ckeditor/ckeditor5-react": "^11.0.0",
     "axios": "^1.6.2",
+    "ckeditor5": "^47.3.0",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

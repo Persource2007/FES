@@ -1076,3 +1076,403 @@ When making changes to the project:
 
 **Last Updated:** December 5, 2025
 
+---
+
+## December 8, 2025
+
+### Major Features & Improvements
+
+#### Story Detail Page Redesign
+- **Complete Layout Overhaul**: Redesigned story detail page to match new design requirements
+  - **Title Section**: Large, bold title (text-4xl to text-5xl) in green-800 color
+  - **Photo Section**: Person photo displayed on left side with max-width constraint (max-w-xs)
+  - **Quote Section**: Quote displayed below photo with modern SVG quote marks, only shown if quote exists
+  - **Person Attribution**: Person name and location displayed below quote, independently shown if name exists
+  - **Content Section**: Story content displayed on right side, taking remaining flex space
+  - **Facilitator Section**: Facilitator name displayed at bottom right, aligned with content end
+  - **Category Badge**: Category name displayed at top right, aligned with header menu
+  - **Placeholder Image**: Uses `/people/people1.png` as default when no photo is provided
+  - **Conditional Rendering**: All fields (quote, facilitator, person name) only display if data exists (no placeholders)
+
+#### New Story Fields in Database & Backend
+- **Database Schema Changes**:
+  - Added `state` column (string, nullable) to `stories` table
+  - Added `city` column (string, nullable) to `stories` table
+  - Created migration: `2025_12_08_062845_add_state_and_city_to_stories_table.php`
+  - Created migration: `2025_12_08_062903_populate_state_and_city_for_existing_stories.php` to populate state from organization's region
+- **Backend API Updates**:
+  - Updated `StoryController::store()` to accept and validate `state` (required) and `city` (optional)
+  - Updated `StoryController::update()` to accept and validate `state` and `city` fields
+  - Updated all story retrieval queries to include `state` and `city` in SELECT statements
+  - Updated `Story` model to include `state` and `city` in `$fillable` array
+- **Story Fields Already Supported**:
+  - `photo_url`: Story photo URL
+  - `quote`: Quote text
+  - `person_name`: Name of the person in the story
+  - `person_location`: Location of the person
+  - `facilitator_name`: Name of facilitator
+  - `facilitator_organization`: Organization of facilitator
+  - `content`: Story content (HTML supported)
+
+#### Admin Portal Story Management
+- **Story Creation/Edit Forms**:
+  - Added input fields for all new story fields (photo_url, quote, person_name, person_location, facilitator_name, facilitator_organization)
+  - **State Field**: Changed from text input to dropdown (required field)
+  - **State Dropdown**: Populated from regions table, made mandatory
+  - **City Field**: Text input (optional)
+  - Removed duplicate `description` field (kept only `content`)
+  - All fields visible to writers when creating stories
+  - All fields visible to editors/admins when editing published stories
+- **Story Display in Admin Portal**:
+  - **Read More Section**: Expandable section showing full story details
+  - Displays state and city if present
+  - Displays story image if `photo_url` is present (with error fallback)
+  - Shows all story fields in organized layout
+  - Preview shows plain text (HTML stripped) for quick overview
+- **Form Validation**:
+  - State field is required for story submission
+  - Content validation updated to handle HTML content (strips HTML tags for empty check)
+
+#### Map Component Major Updates
+
+##### Map Markers Redesign
+- **Custom Marker Images**: Replaced default red circle markers with custom SVG markers
+  - Individual story markers: `/images/individual-marker.svg`
+  - State aggregate markers: `/images/state-marker.svg`
+  - Removed numbers from all markers
+  - Markers scale proportionally based on state size (16px to 32px)
+  - States with single story use individual marker (enables hover effect)
+  - States with multiple stories use state marker
+- **Marker Sizing**: Dynamic marker sizing based on state area from GeoJSON
+  - Calculated state bounding box areas stored in `stateSizes` state
+  - `getMarkerSize()` function returns proportional size (16-32px range)
+  - Both individual and state markers scale proportionally
+
+##### Map Filters & Layout
+- **Filter Integration**: Moved filters inside map block
+  - Filters positioned on left side (`w-full lg:w-80 xl:w-96`)
+  - Map positioned on right side (`flex-1`)
+  - Single container with border (`border border-gray-300`)
+  - Filter sidebar with right border separator
+- **Filtered Stories List**: Stories displayed below filters
+  - Shows stories matching active filters
+  - Each story is a clickable link to story detail page
+  - Displays story title, category, and state
+  - Scrollable list (max-height: 400px) with conditional scrolling (only when > 4 stories)
+  - Reduced whitespace: padding `p-4` → `p-2`, spacing `space-y-2` → `space-y-1.5`
+  - Story cards: `minHeight: 70px`, reduced padding, line separators between items
+- **Filter Synchronization**: Left and right filters synchronized
+  - Clicking state on map updates left filter automatically
+  - Selecting state in left filter expands state on map
+  - Unified reset button clears all filters (category, region, search) and map state
+  - "X stories found" text moved to top right of filter header, aligned with "Filters" title
+
+##### Map Tooltips
+- **Tooltip Redesign**: Complete tooltip layout overhaul
+  - Two-panel layout: left content panel, right image/close panel
+  - Title limited to 2 lines with ellipsis (`line-clamp-2`)
+  - Category badge displayed under title
+  - Location with map pin icon (city/state)
+  - Description/content with line clamp
+  - "Read more" link to navigate to story
+  - Close button in top right
+  - Image placeholder using `/people/people1.png`
+- **Tooltip Size Reduction**: Reduced tooltip dimensions for better visibility
+  - Width: 400px → 320px
+  - Font sizes: `text-sm` → `text-xs` throughout
+  - Padding reduced: `p-3` → `p-2.5` (left), `p-4` → `p-3` (right)
+  - Right panel: `w-32` → `w-24`
+  - Content line clamp: `line-clamp-3` → `line-clamp-2`
+- **Tooltip Positioning**: Fixed tooltip going out of bounds
+  - Updated positioning logic to use viewport coordinates
+  - Tooltip stays within visible map boundaries
+  - Pointer offset calculation for accurate marker alignment
+  - Works correctly in both main map and expanded state views
+- **Tooltip Interaction**:
+  - Removed hover effects, tooltips now appear only on click
+  - Tooltip remains visible until close button clicked or another marker clicked
+  - Tooltip resets when expanding state or resetting filters
+
+##### Map Zoom & Pan Controls
+- **Zoom Controls**: Added manual zoom buttons
+  - Zoom in (+) and zoom out (-) buttons in top-right corner
+  - White background with shadow for visibility
+  - Zoom multiplier: 1.5x for smooth transitions
+  - Respects min/max zoom limits based on map state
+  - Buttons disabled in external focus mode
+- **Mouse Wheel Zoom**: Disabled mouse wheel zoom
+  - `filterZoomEvent` configured to allow panning but block wheel events
+  - Click-and-drag panning enabled
+  - Added drag detection refs to distinguish clicks from drags
+
+##### Map State Expansion
+- **State Expansion**: Clicking state with multiple stories expands view
+  - Loads individual state GeoJSON file
+  - Fits state within map window (dynamic scale calculation)
+  - Shows individual story markers within expanded state
+  - "Show All States" button resets to full India map
+  - Tooltip resets when expanding/collapsing states
+
+#### URL Slug Improvements
+- **Slug Format Change**: Removed story ID from URL slugs
+  - Changed from `/stories/14-story-title` to `/stories/story-title`
+  - Backend slug generation updated to exclude ID
+  - Frontend routing updated to handle slug-only URLs
+  - Backward compatibility maintained for old ID-prefixed URLs
+- **Dynamic URL Updates**: URL updates when story title changes
+  - `useEffect` hook checks if current slug matches story slug
+  - Updates URL using `navigate()` with `replace: true` flag
+  - No page reload required
+
+#### Frontend Component Updates
+
+##### StoryDetail.jsx
+- Complete layout restructure with flexbox
+- Photo, quote, and person name aligned with `max-w-xs` constraint
+- Content area uses `flex-1` for remaining space
+- Facilitator positioned at bottom right
+- Conditional rendering for all optional fields
+- Placeholder image integration
+- Commented out IndiaMap section (as requested)
+
+##### Stories.jsx (Admin Portal)
+- Added state and city fields to story forms
+- State dropdown populated from regions API
+- State field made mandatory
+- Added image display in "Read More" section
+- Added state/city display in "Read More" section
+- Content validation updated for HTML content
+- Fixed optional chaining assignment syntax error
+
+##### IndiaMap.jsx
+- Filters moved inside map container
+- Filtered stories list added below filters
+- Filter synchronization with map state
+- Unified reset button implementation
+- Reduced whitespace in stories list
+- Results count moved to filter header
+
+##### IndiaMapSVG.jsx
+- Custom marker images integration
+- Dynamic marker sizing
+- Tooltip redesign and positioning fixes
+- Zoom controls implementation
+- Mouse wheel zoom disabled
+- State expansion with individual GeoJSON loading
+- Filter synchronization callbacks
+
+#### Database Migrations
+- **Migration: `2025_12_08_062845_add_state_and_city_to_stories_table.php`**
+  - Adds `state` and `city` columns to `stories` table
+  - Includes rollback functionality
+- **Migration: `2025_12_08_062903_populate_state_and_city_for_existing_stories.php`**
+  - Populates `state` field for existing stories from author's organization's region
+  - Uses PostgreSQL-compatible UPDATE syntax with subquery
+  - Leaves `city` as null for existing stories
+
+#### Technical Details
+
+**Backend Files Modified:**
+- `backend/app/Http/Controllers/StoryController.php`: Added state/city validation and selection
+- `backend/app/Models/Story.php`: Added state/city to fillable array
+- `backend/database/migrations/2025_12_08_062845_add_state_and_city_to_stories_table.php`: New migration
+- `backend/database/migrations/2025_12_08_062903_populate_state_and_city_for_existing_stories.php`: New migration
+
+**Frontend Files Modified:**
+- `src/pages/StoryDetail.jsx`: Complete layout redesign
+- `src/pages/Stories.jsx`: Added new fields, state dropdown, Read More section improvements
+- `src/components/IndiaMap.jsx`: Filter integration, story list, synchronization
+- `src/components/IndiaMapSVG.jsx`: Markers, tooltips, zoom controls, state expansion
+
+**Assets Added:**
+- `/public/images/individual-marker.svg`: Individual story marker
+- `/public/images/state-marker.svg`: State aggregate marker
+- `/public/people/people1.png`: Default placeholder image (already existed, now used)
+
+**Removed/Deprecated:**
+- Removed duplicate `description` field (kept only `content`)
+- Commented out IndiaMap section on StoryDetail page
+- Removed CKEditor integration attempt (package installed but component removed)
+
+**Last Updated:** December 8, 2025
+
+---
+
+### December 9, 2025
+
+#### API Tester Migration to Backend Dashboard
+
+**File: `src/pages/DashboardAPI.jsx`** (NEW)
+- Created DashboardAPI component - Moved API tester from public frontend to backend dashboard
+- Super admin access only - Component-level permission check redirects non-super-admin users
+- Admin Hierarchy Microservice testing - Full hierarchical location testing interface (State → District → Sub-District/Block → Panchayat → Village)
+- Removed Header and Footer - Uses Sidebar component instead for dashboard integration
+- Copied functionality from public API page - All API testing features preserved
+
+**File: `src/components/Sidebar.jsx`**
+- Added API menu item - New "API" menu item with dropdown submenu
+- Super admin visibility - Only visible to users with `manage_users` permission (super admins)
+- Submenu structure - "Admin Hierarchy Microservice testing" submenu item links to `/dashboard/api`
+- Added FaCode icon - Imported and used for API menu item
+
+**File: `src/App.jsx`**
+- Added protected API route - New route `/dashboard/api` with `requireSuperAdmin={true}` protection
+- Removed public API route - Removed `/api` public route from routing structure
+
+**File: `src/components/Header.jsx`**
+- Removed API menu item - Removed "API" link from public header navigation
+- Removed FaCode icon import - No longer needed in header
+
+**File: `src/pages/API.jsx`**
+- File kept for reference - Original public API page remains but no longer used in routing
+
+**File: `src/components/ProtectedRoute.jsx`**
+- Added `requireSuperAdmin` prop - New prop to enforce super admin access (manage_users permission)
+- Permission check - Redirects non-super-admin users to dashboard if they try to access protected routes
+
+#### OAuth 2.0 PKCE Implementation
+
+**File: `src/pages/OAuth.jsx`** (NEW)
+- Created OAuth testing page - Public page for testing OAuth 2.0 Authorization Code Flow with PKCE
+- Three endpoint implementations:
+  - **Authorization Endpoint** (`/oauth2/authorize`) - Initiates OAuth flow with PKCE parameters
+  - **Token Endpoint** (`/oauth2/token`) - Exchanges authorization code for access token
+  - **UserInfo Endpoint** (`/userinfo`) - Retrieves authenticated user information
+- Automatic code generation:
+  - **Code Verifier**: Generated using Web Crypto API (`crypto.getRandomValues` and base64 encoding)
+  - **Code Challenge**: SHA-256 hash of verifier, base64 encoded (S256 method)
+  - Equivalent to Linux CLI commands: `openssl rand -base64 60` and `shasum -a 256`
+- Default values:
+  - `client_id`: `commonstories`
+  - `redirect_uri`: `https://geet.observatory.org.in`
+  - `response_type`: `code`
+  - `scope`: `read`
+  - `code_challenge_method`: `S256`
+  - `client_secret`: `a1a8ab04c6b245e7742a87c146d945f399139e85` (default)
+- Authorization flow:
+  - Opens authorization server in new window - Allows user to stay on OAuth page
+  - Browser redirect to OAuth server - Uses `window.open()` instead of AJAX request
+  - Callback handling - `useEffect` parses URL for authorization code and pre-fills token form
+  - Code verifier storage - Stored in localStorage for token exchange
+- URL construction:
+  - Direct server URL for authorization - Uses `http://192.168.14.16:9090/api/oauth2/authorize` (no proxy)
+  - Proxy for AJAX requests - Uses `/oauth-proxy` in development for token and userinfo endpoints
+  - Proper URL formatting - Removes spaces and ensures correct path construction
+- Error handling:
+  - Comprehensive error messages - Shows detailed error information from OAuth server
+  - Network error handling - Handles CORS and network issues gracefully
+  - Validation - Validates redirect_uri format before sending requests
+
+**File: `src/App.jsx`**
+- Added OAuth route - New public route `/oauth` for OAuth testing page
+
+**File: `src/components/Header.jsx`**
+- Added OAuth menu item - New "OAuth" link in header navigation (similar to "Stories" link)
+- Styled consistently - Matches existing header navigation styling
+
+**File: `vite.config.js`**
+- Added OAuth proxy configuration - New proxy `/oauth-proxy` for OAuth server
+  - Target: `http://192.168.14.16:9090`
+  - Rewrites `/oauth-proxy` to `/api` path
+  - Handles CORS for AJAX requests in development
+
+#### Hierarchical Location System Implementation
+
+**File: `backend/database/migrations/2025_12_09_000001_add_hierarchical_location_fields_to_stories_table.php`** (NEW)
+- Created migration for stories table - Adds hierarchical location fields from Admin Hierarchy Microservice
+- Fields added:
+  - `state_id`, `state_name` (string, nullable)
+  - `district_id`, `district_name` (string, nullable)
+  - `sub_district_id`, `sub_district_name` (string, nullable)
+  - `block_id`, `block_name` (string, nullable)
+  - `panchayat_id`, `panchayat_name` (string, nullable)
+  - `village_id`, `village_name` (string, nullable)
+- Replaces simple state/city text fields with structured hierarchical data
+- Includes rollback functionality - `down()` method removes all added columns
+
+**File: `backend/database/migrations/2025_12_09_085354_remove_state_and_city_from_stories_table.php`** (NEW)
+- Removed state and city columns - Drops `state` and `city` columns from stories table
+- Replaced by hierarchical location fields - Stories now use structured location hierarchy
+- Includes rollback functionality - `down()` method restores state and city columns
+
+**File: `backend/database/migrations/2025_12_09_091241_add_hierarchical_location_fields_to_organizations_table.php`** (NEW)
+- Created migration for organizations table - Adds hierarchical location fields
+- Fields added:
+  - `state_id`, `state_name` (string, nullable)
+  - `district_id`, `district_name` (string, nullable)
+  - `sub_district_id`, `sub_district_name` (string, nullable)
+  - `block_id`, `block_name` (string, nullable)
+  - `panchayat_id`, `panchayat_name` (string, nullable)
+  - `village_id`, `village_name` (string, nullable)
+- Includes rollback functionality - `down()` method removes all added columns
+
+**File: `backend/app/Http/Controllers/StoryController.php`**
+- Added `getStorySelectFields()` helper method - Dynamically checks for location columns before adding to SELECT queries
+- Prevents SQL errors during migration transitions - Uses `Schema::hasColumn()` to conditionally include fields
+- Updated `store()` method - Accepts and validates all hierarchical location fields (state_id required, others optional)
+- Updated `update()` method - Accepts all hierarchical location fields for story editing
+- Updated all story retrieval methods - Includes hierarchical location fields in SELECT statements
+- Removed state and city references - All queries now use hierarchical location fields
+- Validation rules updated - `state_id` is required, all other location fields are optional
+
+**File: `backend/app/Models/Story.php`**
+- Removed `state` and `city` from `$fillable` array - No longer accepts these fields
+- Hierarchical location fields are automatically fillable via mass assignment
+
+**File: `src/components/LocationSelector.jsx`** (NEW/ENHANCED)
+- Created reusable LocationSelector component - Hierarchical dropdown selector for Admin Hierarchy Microservice
+- Cascading dropdowns - State → District → Sub-District/Block → Panchayat → Village
+- API integration - Fetches data from Admin Hierarchy Microservice via `/api-proxy`
+- Error handling - Handles API errors and empty states gracefully
+- Customizable props - Supports label visibility, className, and callback functions
+- Loading states - Shows spinners during data fetching
+
+**File: `src/pages/Stories.jsx`**
+- Integrated LocationSelector component - Replaced state/city text inputs with hierarchical selector
+- Updated story form state - Added all hierarchical location fields (state_id, district_id, etc.)
+- Updated story submission - Sends hierarchical location data to backend API
+- Updated story editing - Pre-fills LocationSelector with existing hierarchical location data
+- Removed state and city fields - No longer uses simple text inputs for location
+
+**File: `src/pages/StoryDetail.jsx`**
+- Updated location display - Shows hierarchical location (village → panchayat → block → district → state)
+- Removed state and city display - Uses hierarchical location fields instead
+
+**File: `src/components/IndiaMap.jsx`**
+- Updated to use `state_name` - Changed from `state` field to `state_name` for filtering and grouping
+- Hierarchical location support - Stories grouped by hierarchical location data
+
+**File: `src/components/IndiaMapSVG.jsx`**
+- Updated tooltip display - Shows hierarchical location path (village → panchayat → block → district → state)
+- Removed city and state display - Uses hierarchical location fields in tooltip
+- Updated state filtering - Uses `state_name` instead of `state` field
+
+#### Issues Resolved
+
+**API Tester Migration:**
+- ✅ Moved API tester to backend - Successfully moved from public frontend to protected dashboard route
+- ✅ Super admin access control - Implemented multiple layers of security (sidebar visibility, route protection, component-level checks)
+- ✅ Navigation structure - Added proper menu hierarchy with dropdown submenu
+
+**OAuth Implementation:**
+- ✅ CORS issues resolved - Configured Vite proxy for OAuth server to handle CORS in development
+- ✅ Authorization redirect - Fixed to open in new window instead of redirecting current page
+- ✅ URL construction - Fixed double slashes and missing `/api` path issues
+- ✅ Code generation - Successfully implemented PKCE code verifier and challenge generation using Web Crypto API
+- ✅ Default values - All OAuth parameters have sensible defaults for quick testing
+- ✅ Error handling - Comprehensive error messages and validation for OAuth flow
+
+**Proxy Configuration:**
+- ✅ OAuth proxy setup - Added `/oauth-proxy` configuration to Vite config for development CORS handling
+- ✅ URL routing - Proper separation between browser redirects (direct URL) and AJAX requests (proxy)
+
+**Hierarchical Location System:**
+- ✅ Stories location migration - Successfully migrated from simple state/city to hierarchical location system
+- ✅ Backend compatibility - Added conditional column selection to prevent errors during migration
+- ✅ Frontend integration - LocationSelector component integrated into story creation/editing forms
+- ✅ Map component updates - IndiaMap and IndiaMapSVG updated to use hierarchical location fields
+- ✅ Database migrations - Three migrations created: add hierarchical fields to stories, remove state/city, add hierarchical fields to organizations
+- ✅ Backward compatibility - `getStorySelectFields()` helper ensures queries work during schema transitions
+
+**Last Updated:** December 9, 2025
+

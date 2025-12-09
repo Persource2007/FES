@@ -6,7 +6,21 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    open: true
+    open: true,
+        proxy: {
+          '/api-proxy': {
+            target: 'https://adminhierarchy.indiaobservatory.org.in',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api-proxy/, ''),
+            secure: true,
+          },
+          '/oauth-proxy': {
+            target: 'http://192.168.14.16:9090',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/oauth-proxy/, '/api'),
+            secure: false,
+          }
+        }
   }
 })
 
