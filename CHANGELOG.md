@@ -1550,5 +1550,85 @@ When making changes to the project:
   - Code with state: `xxx&state=yyy`
   - Plain code values: `xxx`
 
+### December 10, 2025 (Documentation & Architecture)
+
+#### Documentation Updates
+
+**File: `README.md`**
+- Complete rewrite with comprehensive technology stack overview
+- Added quick start guide with prerequisites and installation steps
+- Documented complete frontend and backend technology stack
+- Added project structure overview
+- Included authentication flow documentation (OAuth 2.0 and BFF pattern)
+- Added API documentation section with Swagger UI instructions
+- Added configuration examples for frontend and backend
+- Included links to architecture diagrams and BFF implementation guide
+
+**File: `ARCHITECTURE_DIAGRAMS.md`** (NEW)
+- Created comprehensive Mermaid diagrams for system architecture
+- Documented current architecture (without BFF)
+- Documented recommended BFF architecture
+- Added comparison diagrams showing differences
+- Included sequence diagrams for OAuth flows
+- Added diagrams for request flows and session management
+
+**File: `BFF_IMPLEMENTATION_GUIDE.md`** (NEW)
+- Created detailed Backend-for-Frontend (BFF) pattern implementation guide
+- Documented architecture decision and rationale
+- Provided step-by-step implementation instructions
+- Included code examples for backend and frontend
+- Documented security improvements (HTTP-only cookies, token management)
+- Added database schema for sessions table
+- Included optional Redis optimization guide
+
+#### Backend Changes
+
+**File: `backend/app/Http/Middleware/CorsMiddleware.php`**
+- Enhanced CORS middleware to support Swagger UI (`http://localhost:3001`)
+- Added support for wildcard `http://localhost:*` in development
+- Improved origin matching logic with proper trimming
+- Added `Accept` header to allowed headers
+- Fixed CORS handling when `Access-Control-Allow-Credentials` is `true`
+- Ensured specific origin is always set (cannot use `*` with credentials)
+
+**File: `backend/api-docs/swagger.yaml`**
+- Added Organizations endpoints documentation:
+  - `GET /api/organizations` - List all organizations
+  - `POST /api/organizations` - Create new organization
+  - `PUT /api/organizations/{id}` - Update organization
+  - `DELETE /api/organizations/{id}` - Delete organization
+  - `PATCH /api/organizations/{id}/toggle-status` - Toggle organization status
+- Added Stories by Slug endpoint:
+  - `GET /api/stories/slug/{slug}` - Get story by slug
+- Added corresponding schema definitions:
+  - `Organization`, `OrganizationListResponse`, `CreateOrganizationRequest`
+  - `CreateOrganizationResponse`, `DeleteOrganizationResponse`, `ToggleOrganizationStatusResponse`
+- Fixed YAML syntax error (quoted description with parentheses)
+
+#### Project Cleanup
+
+**File: `.gitignore`**
+- Added exclusions for test files (`test_*.php`, `*.test.php`)
+- Added exclusions for SQL scripts (`*.sql`, `drop_*.sql`)
+- Added exclusions for backend storage files (logs, cache, sessions, views)
+- Maintained existing exclusions for email templates and environment files
+
+**Removed Files:**
+- `backend/test_regions_endpoint.php` - Test file removed from repository
+- `backend/drop_user_organizations.sql` - Migration helper SQL script removed
+
+#### Issues Resolved
+
+**Swagger UI CORS:**
+- ✅ Fixed "Failed to fetch" error in Swagger UI - Added `http://localhost:3001` to allowed origins
+- ✅ Enhanced CORS middleware - Now supports multiple development origins
+- ✅ Fixed credentials handling - Properly sets specific origin when credentials are enabled
+
+**Documentation:**
+- ✅ Created comprehensive architecture documentation with Mermaid diagrams
+- ✅ Created detailed BFF implementation guide with code examples
+- ✅ Updated README with complete technology stack and setup instructions
+- ✅ Removed unnecessary test and helper files from repository
+
 **Last Updated:** December 10, 2025
 
