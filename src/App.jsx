@@ -10,6 +10,7 @@ import StoryReview from './pages/StoryReview'
 import PublicStories from './pages/PublicStories'
 import StoryDetail from './pages/StoryDetail'
 import OAuth from './pages/OAuth'
+import OAuthCallback from './pages/OAuthCallback'
 import DashboardAPI from './pages/DashboardAPI'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -21,6 +22,7 @@ function App() {
         <Route path="/stories" element={<PublicStories />} />
         <Route path="/stories/:slug" element={<StoryDetail />} />
         <Route path="/oauth" element={<OAuth />} />
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/login" element={<Login />} />
         <Route
           path="/dashboard"

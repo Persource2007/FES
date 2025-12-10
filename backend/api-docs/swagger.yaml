@@ -541,6 +541,197 @@ paths:
                 success: false
                 message: "An error occurred while deleting user"
 
+  /api/organizations:
+    get:
+      tags:
+        - Organizations
+      summary: Get all organizations
+      description: |
+        Retrieves all organizations.
+        
+        **Access:** Super admin only
+        
+        Returns a list of all organizations with their details.
+      operationId: getOrganizations
+      responses:
+        '200':
+          description: Successfully retrieved organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Organizations
+      summary: Create a new organization
+      description: |
+        Creates a new organization.
+        
+        **Access:** Super admin only
+      operationId: createOrganization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Organization created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrganizationResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organizations/{id}:
+    put:
+      tags:
+        - Organizations
+      summary: Update an organization
+      description: |
+        Updates an existing organization.
+        
+        **Access:** Super admin only
+      operationId: updateOrganization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Organization ID
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '200':
+          description: Organization updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrganizationResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Organizations
+      summary: Delete an organization
+      description: |
+        Deletes an organization.
+        
+        **Access:** Super admin only
+      operationId: deleteOrganization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Organization ID
+          example: 1
+      responses:
+        '200':
+          description: Organization deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteOrganizationResponse'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organizations/{id}/toggle-status:
+    patch:
+      tags:
+        - Organizations
+      summary: Toggle Organization Active Status
+      description: |
+        Toggle the active/inactive status of an organization.
+        
+        **Access:** Super admin only
+        
+        Toggles between active (true) and inactive (false).
+      operationId: toggleOrganizationStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Organization ID
+          example: 1
+      responses:
+        '200':
+          description: Organization status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToggleOrganizationStatusResponse'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/regions:
     get:
       tags:
@@ -1534,6 +1725,65 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/stories/slug/{slug}:
+    get:
+      tags:
+        - Stories
+      summary: Get a single published story by slug (Public)
+      description: |
+        Retrieves a single published story by its slug. This is a public endpoint and does not require authentication.
+        
+        Returns the full story details including author, category, and region information.
+        
+        **Note:** This is the preferred endpoint for retrieving stories by their URL-friendly slug.
+      operationId: getPublishedStoryBySlug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Story slug (URL-friendly identifier)
+          example: "saving-the-western-ghats-forest"
+      responses:
+        '200':
+          description: Successfully retrieved the story
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetStoryResponse'
+              example:
+                success: true
+                story:
+                  id: 1
+                  title: "Saving the western ghats forest"
+                  slug: "saving-the-western-ghats-forest"
+                  content: "A tribal community's fight to protect their ancestral woodland..."
+                  status: "published"
+                  created_at: "2025-12-01T10:00:00+00:00"
+                  published_at: "2025-12-01T12:00:00+00:00"
+                  author_name: "John Doe"
+                  category_id: 1
+                  category_name: "Forest Conservation"
+                  region_id: 1
+                  region_name: "Maharashtra"
+                  region_code: "MH"
+        '404':
+          description: Published story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Published story not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/stories/{id}:
     get:
       tags:
@@ -1543,6 +1793,8 @@ paths:
         Retrieves a single published story by its ID. This is a public endpoint and does not require authentication.
         
         Returns the full story details including author, category, and region information.
+        
+        **Note:** For better SEO and URL readability, prefer using `/api/stories/slug/{slug}` endpoint.
       operationId: getPublishedStory
       parameters:
         - name: id
@@ -2984,4 +3236,123 @@ components:
           example: "Category status updated successfully"
         category:
           $ref: '#/components/schemas/StoryCategory'
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Organization ID
+          example: 1
+        name:
+          type: string
+          maxLength: 255
+          description: Organization name
+          example: "Test ORG 1"
+        region_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Region ID
+          example: 1
+        region_name:
+          type: string
+          nullable: true
+          description: Region name
+          example: "Maharashtra"
+        is_active:
+          type: boolean
+          description: Whether the organization is active
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when organization was created
+          example: "2025-12-02T10:00:00+00:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when organization was last updated
+          example: "2025-12-02T10:00:00+00:00"
+
+    OrganizationListResponse:
+      type: object
+      required:
+        - success
+        - organizations
+      properties:
+        success:
+          type: boolean
+          example: true
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+
+    CreateOrganizationRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Organization name
+          example: "Test ORG 1"
+        region_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Region ID
+          example: 1
+        is_active:
+          type: boolean
+          description: "Whether the organization is active (default: true)"
+          example: true
+
+    CreateOrganizationResponse:
+      type: object
+      required:
+        - success
+        - message
+        - organization
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Organization created successfully"
+        organization:
+          $ref: '#/components/schemas/Organization'
+
+    DeleteOrganizationResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Organization deleted successfully"
+
+    ToggleOrganizationStatusResponse:
+      type: object
+      required:
+        - success
+        - message
+        - organization
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Organization status updated successfully"
+        organization:
+          $ref: '#/components/schemas/Organization'
 

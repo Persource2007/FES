@@ -1474,5 +1474,81 @@ When making changes to the project:
 - ✅ Database migrations - Three migrations created: add hierarchical fields to stories, remove state/city, add hierarchical fields to organizations
 - ✅ Backward compatibility - `getStorySelectFields()` helper ensures queries work during schema transitions
 
-**Last Updated:** December 9, 2025
+### December 10, 2025
+
+#### OAuth 2.0 Authentication Fixes and Improvements
+
+**File: `src/pages/OAuth.jsx`**
+- Fixed OAuth proxy configuration - Removed `/api` path from all OAuth endpoints
+  - Authorization endpoint: `http://192.168.14.16:9090/oauth2/authorize` (direct URL, no proxy)
+  - Token endpoint: `http://192.168.14.16:9090/oauth2/token` (uses proxy in dev for CORS)
+  - UserInfo endpoint: `http://192.168.14.16:9090/userinfo` (uses proxy in dev for CORS)
+- Updated URL routing strategy:
+  - Authorization uses direct URL - Browser redirect doesn't need proxy, ensures proper redirect to `redirect_uri`
+  - Token and UserInfo use proxy in development - AJAX requests go through proxy to avoid CORS issues
+- Added default client secret - Pre-filled form with default value: `a1a8ab04c6b245e7742a87c146d945f399139e85`
+- Fixed authentication method - Changed from form parameters to HTTP Basic Authentication
+  - Client credentials sent via Basic Auth header (username: `client_id`, password: `client_secret`)
+  - `client_id` included in both form body and Basic Auth header (matches OAuth server requirements)
+  - `client_secret` only in Basic Auth header, not in form body
+- Enhanced error logging - Added comprehensive console logging for debugging token requests
+  - Logs request URL, form data, Basic Auth usage, and full error details
+  - Better error messages distinguish between CORS, network, and authentication errors
+
+**File: `vite.config.js`**
+- Updated OAuth proxy configuration - Removed `/api` path from proxy rewrite
+  - Proxy now rewrites `/oauth-proxy` to empty string (not `/api`)
+  - `/oauth-proxy/oauth2/token` → `http://192.168.14.16:9090/oauth2/token`
+  - Maintains CORS handling for AJAX requests in development
+
+#### Issues Resolved
+
+**OAuth Authentication:**
+- ✅ Fixed `invalid_client` error - Changed authentication from form parameters to HTTP Basic Auth
+- ✅ Fixed network/CORS errors - Proper separation of direct URLs (authorization) and proxy URLs (token/userinfo)
+- ✅ Fixed redirect issues - Authorization endpoint uses direct URL ensuring proper redirect to `redirect_uri`
+- ✅ Removed `/api` path - All OAuth endpoints now use correct paths without `/api` prefix
+- ✅ Default values - Client secret pre-filled for easier testing
+- ✅ Request format - Token request now matches Postman configuration exactly
+
+**Last Updated:** December 10, 2025
+
+---
+
+### December 10, 2025 (Continued)
+
+#### Frontend Changes
+
+**File: `src/components/Header.jsx`**
+- Fixed duplicate OAuth code processing - Added guard to prevent processing the same authorization code twice
+- Removed page reload on successful OAuth login - Console logs now persist after login for better debugging
+- Added `processingCode` state tracking - Prevents duplicate token exchange requests that caused `invalid_grant` errors
+
+**File: `src/components/OAuthCodeModal.jsx`**
+- Enhanced code extraction logic - Improved handling of authorization codes that include `&state=` parameter
+- Added support for extracting code from full URLs, parameter strings, or plain code values
+- Better error handling for malformed code inputs
+
+**File: `src/utils/oauthLogin.js`**
+- Fixed code cleaning in `exchangeCodeForToken` - Extracts only the code value when code contains `&state=` parameter
+- Improved code extraction logic - Handles multiple formats: full URLs, parameter strings (`code=xxx&state=yyy`), or plain code values
+- Added comprehensive logging - Enhanced console logging for token exchange parameters and responses
+- Fixed duplicate processing prevention - Code extraction now properly handles edge cases where code value includes state parameter
+
+#### Issues Resolved
+
+**OAuth Authentication:**
+- ✅ Fixed `400 Bad Request` error - Code value was incorrectly including `&state=` parameter, now properly extracted
+- ✅ Fixed duplicate code processing - Authorization code was being used twice, causing `invalid_grant` error on second attempt
+- ✅ Fixed console log clearing - Removed `window.location.reload()` on successful login to preserve debugging information
+- ✅ Improved code extraction - Modal and token exchange now properly handle codes with appended state parameters
+
+**Code Extraction:**
+- Authorization code extraction now handles:
+  - Full URLs: `https://geet.observatory.org.in/?code=xxx&state=yyy`
+  - Parameter strings: `code=xxx&state=yyy`
+  - Code with state: `xxx&state=yyy`
+  - Plain code values: `xxx`
+
+**Last Updated:** December 10, 2025
 

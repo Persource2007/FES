@@ -17,7 +17,7 @@ export default defineConfig({
           '/oauth-proxy': {
             target: 'http://192.168.14.16:9090',
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/oauth-proxy/, '/api'),
+            rewrite: (path) => path.replace(/^\/oauth-proxy/, ''),
             secure: false,
           }
         }

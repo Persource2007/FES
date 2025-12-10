@@ -4,11 +4,19 @@ import Header from '../components/Header'
 import Footer from '../components/Footer'
 import axios from 'axios'
 
-// OAuth API Base URL - Use proxy in development to avoid CORS issues
-// The proxy rewrites /oauth-proxy to /api, so /oauth-proxy/oauth2/authorize becomes http://192.168.14.16:9090/api/oauth2/authorize
+// OAuth API Base URL - Use proxy in development to avoid CORS issues for AJAX requests
+// The proxy rewrites /oauth-proxy to empty, so /oauth-proxy/oauth2/token becomes http://192.168.14.16:9090/oauth2/token
 const OAUTH_BASE_URL = import.meta.env.DEV 
   ? '/oauth-proxy' 
-  : 'http://192.168.14.16:9090/api'
+  : 'http://192.168.14.16:9090'
+
+// Authorization URL - Always use direct URL (no proxy) since it's a browser redirect, not AJAX
+// This ensures the OAuth server can redirect properly to the redirect_uri
+const OAUTH_AUTHORIZE_URL = 'http://192.168.14.16:9090'
+
+// Token and UserInfo URLs - Use proxy in development to avoid CORS issues (these are AJAX requests)
+const OAUTH_TOKEN_URL = OAUTH_BASE_URL
+const OAUTH_USERINFO_URL = OAUTH_BASE_URL
 
 // Generate code verifier (equivalent to: openssl rand -base64 60 | tr -d "\\n" | tr '/+' '_-' | tr -d '=')
 const generateCodeVerifier = () => {
@@ -62,12 +70,13 @@ function OAuth() {
     code: '',
     redirect_uri: 'https://geet.observatory.org.in',
     client_id: 'commonstories',
-    client_secret: '',
+    client_secret: 'a1a8ab04c6b245e7742a87c146d945f399139e85', // Default client secret
     code_verifier: '',
   })
   const [tokenResult, setTokenResult] = useState(null)
   const [tokenLoading, setTokenLoading] = useState(false)
   const [accessToken, setAccessToken] = useState('')
+  const [refreshToken, setRefreshToken] = useState('')
 
   // UserInfo endpoint state
   const [userInfoResult, setUserInfoResult] = useState(null)
@@ -76,6 +85,17 @@ function OAuth() {
   // Generate code verifier and challenge on mount
   useEffect(() => {
     generateNewCodePair()
+    
+    // Load stored tokens from localStorage
+    const storedAccessToken = localStorage.getItem('oauth_access_token')
+    const storedRefreshToken = localStorage.getItem('oauth_refresh_token')
+    
+    if (storedAccessToken) {
+      setAccessToken(storedAccessToken)
+    }
+    if (storedRefreshToken) {
+      setRefreshToken(storedRefreshToken)
+    }
   }, [])
 
   // Function to generate new code verifier and challenge
@@ -111,7 +131,8 @@ function OAuth() {
     if (authParams.code_challenge) params.append('code_challenge', authParams.code_challenge.trim())
     if (authParams.code_challenge_method) params.append('code_challenge_method', authParams.code_challenge_method.trim())
 
-    const url = `${OAUTH_BASE_URL}/oauth2/authorize?${params.toString()}`
+    // Use direct URL for authorization (not proxy) to ensure proper redirects
+    const url = `${OAUTH_AUTHORIZE_URL}/oauth2/authorize?${params.toString()}`
     
     // Log the URL for debugging
     console.log('=== OAuth Authorization Request ===')
@@ -175,32 +196,177 @@ function OAuth() {
 
       const formData = new URLSearchParams()
       formData.append('grant_type', tokenParams.grant_type)
-      if (tokenParams.code) formData.append('code', tokenParams.code)
-      if (tokenParams.redirect_uri) formData.append('redirect_uri', tokenParams.redirect_uri)
-      if (tokenParams.client_id) formData.append('client_id', tokenParams.client_id)
-      if (tokenParams.client_secret) formData.append('client_secret', tokenParams.client_secret)
-      if (tokenParams.code_verifier) formData.append('code_verifier', tokenParams.code_verifier)
+      
+      // Different parameters based on grant type
+      if (tokenParams.grant_type === 'authorization_code') {
+        if (tokenParams.code) formData.append('code', tokenParams.code)
+        if (tokenParams.redirect_uri) formData.append('redirect_uri', tokenParams.redirect_uri)
+        if (tokenParams.client_id) formData.append('client_id', tokenParams.client_id)
+        if (tokenParams.code_verifier) formData.append('code_verifier', tokenParams.code_verifier)
+      } else if (tokenParams.grant_type === 'refresh_token') {
+        if (refreshToken) formData.append('refresh_token', refreshToken)
+        if (tokenParams.client_id) formData.append('client_id', tokenParams.client_id)
+      }
 
-      const response = await axios.post(`${OAUTH_BASE_URL}/oauth2/token`, formData, {
+      // Use proxy for token request (AJAX) to avoid CORS issues
+      const tokenUrl = `${OAUTH_TOKEN_URL}/oauth2/token`
+      
+      // Create Basic Auth header: username = client_id, password = client_secret
+      const basicAuth = btoa(`${tokenParams.client_id}:${tokenParams.client_secret}`)
+      
+      // Log request details for debugging
+      console.log('=== OAuth Token Request ===')
+      console.log('Token URL:', tokenUrl)
+      console.log('Request Data:', Object.fromEntries(formData))
+      console.log('Client ID:', tokenParams.client_id)
+      console.log('Code Verifier:', tokenParams.code_verifier)
+      console.log('Using Basic Auth (client_id:client_secret)')
+      console.log('==========================')
+
+      const response = await axios.post(tokenUrl, formData, {
         timeout: 30000,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
+          'Authorization': `Basic ${basicAuth}`, // Basic Auth with client_id:client_secret
         },
         withCredentials: false,
       })
 
+      console.log('=== Token Response ===')
+      console.log('Status:', response.status)
+      console.log('Data:', response.data)
+      console.log('======================')
+
       const tokenData = response.data
       setTokenResult({ success: true, data: tokenData })
       
-      // Store access token if available
+      // Store access token and refresh token if available
       if (tokenData.access_token) {
         setAccessToken(tokenData.access_token)
+        localStorage.setItem('oauth_access_token', tokenData.access_token)
+      }
+      if (tokenData.refresh_token) {
+        setRefreshToken(tokenData.refresh_token)
+        localStorage.setItem('oauth_refresh_token', tokenData.refresh_token)
       }
     } catch (err) {
+      // Enhanced error logging
+      console.error('=== Token Request Error ===')
+      console.error('Error Message:', err.message)
+      console.error('Error Code:', err.code)
+      console.error('Response Status:', err.response?.status)
+      console.error('Response Data:', err.response?.data)
+      console.error('Response Headers:', err.response?.headers)
+      console.error('Request URL:', err.config?.url)
+      console.error('Request Data:', err.config?.data)
+      console.error('Full Error:', err)
+      console.error('==========================')
+      
       setTokenResult({
         success: false,
-        error: err.response?.data || err.message,
+        error: {
+          message: err.message,
+          code: err.code,
+          status: err.response?.status,
+          data: err.response?.data || err.message,
+          details: err.response ? {
+            status: err.response.status,
+            statusText: err.response.statusText,
+            data: err.response.data,
+          } : {
+            networkError: true,
+            message: 'Network error - check CORS or server connectivity'
+          }
+        },
+      })
+    } finally {
+      setTokenLoading(false)
+    }
+  }
+
+  // Handle refresh token
+  const handleRefreshToken = async (e) => {
+    e.preventDefault()
+    if (!refreshToken) {
+      setTokenResult({
+        success: false,
+        error: { error: 'missing_refresh_token', error_description: 'Refresh token is required. Please get an access token first.' },
+      })
+      return
+    }
+
+    try {
+      setTokenLoading(true)
+      setTokenResult(null)
+
+      const formData = new URLSearchParams()
+      formData.append('grant_type', 'refresh_token')
+      formData.append('refresh_token', refreshToken)
+      if (tokenParams.client_id) formData.append('client_id', tokenParams.client_id)
+
+      const tokenUrl = `${OAUTH_TOKEN_URL}/oauth2/token`
+      
+      // Create Basic Auth header: username = client_id, password = client_secret
+      const basicAuth = btoa(`${tokenParams.client_id}:${tokenParams.client_secret}`)
+      
+      console.log('=== Refresh Token Request ===')
+      console.log('Token URL:', tokenUrl)
+      console.log('Request Data:', Object.fromEntries(formData))
+      console.log('Refresh Token:', refreshToken)
+      console.log('Using Basic Auth (client_id:client_secret)')
+      console.log('============================')
+
+      const response = await axios.post(tokenUrl, formData, {
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'Authorization': `Basic ${basicAuth}`,
+        },
+        withCredentials: false,
+      })
+
+      console.log('=== Refresh Token Response ===')
+      console.log('Status:', response.status)
+      console.log('Data:', response.data)
+      console.log('==============================')
+
+      const tokenData = response.data
+      setTokenResult({ success: true, data: tokenData })
+      
+      // Store new access token and refresh token if available
+      if (tokenData.access_token) {
+        setAccessToken(tokenData.access_token)
+        localStorage.setItem('oauth_access_token', tokenData.access_token)
+      }
+      if (tokenData.refresh_token) {
+        setRefreshToken(tokenData.refresh_token) // Update refresh token (some servers issue new refresh tokens)
+        localStorage.setItem('oauth_refresh_token', tokenData.refresh_token)
+      }
+    } catch (err) {
+      console.error('=== Refresh Token Error ===')
+      console.error('Error Message:', err.message)
+      console.error('Response Status:', err.response?.status)
+      console.error('Response Data:', err.response?.data)
+      console.error('===========================')
+      
+      setTokenResult({
+        success: false,
+        error: {
+          message: err.message,
+          code: err.code,
+          status: err.response?.status,
+          data: err.response?.data || err.message,
+          details: err.response ? {
+            status: err.response.status,
+            statusText: err.response.statusText,
+            data: err.response.data,
+          } : {
+            networkError: true,
+            message: 'Network error - check CORS or server connectivity'
+          }
+        },
       })
     } finally {
       setTokenLoading(false)
@@ -224,7 +390,8 @@ function OAuth() {
 
       const token = accessToken || tokenResult?.data?.access_token
 
-      const response = await axios.get(`${OAUTH_BASE_URL}/userinfo`, {
+      // Use proxy for userinfo request (AJAX) to avoid CORS issues
+      const response = await axios.get(`${OAUTH_USERINFO_URL}/userinfo`, {
         timeout: 30000,
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -452,7 +619,8 @@ function OAuth() {
                 Authorization Endpoint
               </h2>
               <p className="text-sm text-gray-600 mb-4">
-                API: <code className="bg-gray-100 px-2 py-1 rounded">{OAUTH_BASE_URL}/oauth2/authorize</code>
+                API: <code className="bg-gray-100 px-2 py-1 rounded">{OAUTH_AUTHORIZE_URL}/oauth2/authorize</code>
+                <span className="text-xs text-gray-500 ml-2">(Direct URL - no proxy for browser redirects)</span>
               </p>
               <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-xs text-yellow-800">
@@ -572,7 +740,8 @@ function OAuth() {
                 Token Endpoint
               </h2>
               <p className="text-sm text-gray-600 mb-4">
-                API: <code className="bg-gray-100 px-2 py-1 rounded">{OAUTH_BASE_URL}/oauth2/token</code>
+                API: <code className="bg-gray-100 px-2 py-1 rounded">{OAUTH_TOKEN_URL}/oauth2/token</code>
+                <span className="text-xs text-gray-500 ml-2">(Uses proxy in dev to avoid CORS)</span>
               </p>
               
               <form onSubmit={handleGetToken} className="space-y-4">
@@ -591,32 +760,54 @@ function OAuth() {
                       <option value="refresh_token">refresh_token</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Authorization Code *
-                    </label>
-                    <input
-                      type="text"
-                      value={tokenParams.code}
-                      onChange={(e) => setTokenParams(prev => ({ ...prev, code: e.target.value }))}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="Code from authorization"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Redirect URI *
-                    </label>
-                    <input
-                      type="text"
-                      value={tokenParams.redirect_uri}
-                      onChange={(e) => setTokenParams(prev => ({ ...prev, redirect_uri: e.target.value }))}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="Same as authorization redirect_uri"
-                    />
-                  </div>
+                  {tokenParams.grant_type === 'authorization_code' && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Authorization Code *
+                        </label>
+                        <input
+                          type="text"
+                          value={tokenParams.code}
+                          onChange={(e) => setTokenParams(prev => ({ ...prev, code: e.target.value }))}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="Code from authorization"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Redirect URI *
+                        </label>
+                        <input
+                          type="text"
+                          value={tokenParams.redirect_uri}
+                          onChange={(e) => setTokenParams(prev => ({ ...prev, redirect_uri: e.target.value }))}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="Same as authorization redirect_uri"
+                        />
+                      </div>
+                    </>
+                  )}
+                  {tokenParams.grant_type === 'refresh_token' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Refresh Token *
+                      </label>
+                      <input
+                        type="text"
+                        value={refreshToken}
+                        onChange={(e) => setRefreshToken(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono text-xs"
+                        placeholder="Refresh token from previous token response"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Auto-filled from previous token response if available
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Client ID *
@@ -643,20 +834,22 @@ function OAuth() {
                       placeholder="Enter client secret"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Code Verifier (Auto-filled)
-                    </label>
-                    <input
-                      type="text"
-                      value={tokenParams.code_verifier}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs font-mono"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Must match the code verifier used in authorization
-                    </p>
-                  </div>
+                  {tokenParams.grant_type === 'authorization_code' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Code Verifier (Auto-filled)
+                      </label>
+                      <input
+                        type="text"
+                        value={tokenParams.code_verifier}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs font-mono"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Must match the code verifier used in authorization
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <button
                   type="submit"
@@ -669,22 +862,94 @@ function OAuth() {
               </form>
               {renderResult(tokenResult, 'Token')}
               {tokenResult?.success && tokenResult?.data?.access_token && (
-                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm font-medium text-blue-800 mb-2">Access Token (stored for UserInfo):</p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 text-xs bg-white p-2 rounded border break-all">
-                      {tokenResult.data.access_token}
-                    </code>
-                    <button
-                      onClick={() => copyToClipboard(tokenResult.data.access_token)}
-                      className="px-2 py-1 bg-blue-200 hover:bg-blue-300 rounded text-xs"
-                    >
-                      <FaCopy />
-                    </button>
+                <div className="mt-4 space-y-3">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm font-medium text-blue-800 mb-2">Access Token (stored for UserInfo):</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-xs bg-white p-2 rounded border break-all">
+                        {tokenResult.data.access_token}
+                      </code>
+                      <button
+                        onClick={() => copyToClipboard(tokenResult.data.access_token)}
+                        className="px-2 py-1 bg-blue-200 hover:bg-blue-300 rounded text-xs"
+                      >
+                        <FaCopy />
+                      </button>
+                    </div>
+                    {tokenResult.data.expires_in && (
+                      <p className="text-xs text-blue-600 mt-2">
+                        Expires in: {tokenResult.data.expires_in} seconds ({Math.round(tokenResult.data.expires_in / 60)} minutes)
+                      </p>
+                    )}
                   </div>
+                  {tokenResult.data.refresh_token && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm font-medium text-green-800 mb-2">Refresh Token (stored for token refresh):</p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs bg-white p-2 rounded border break-all font-mono">
+                          {tokenResult.data.refresh_token}
+                        </code>
+                        <button
+                          onClick={() => copyToClipboard(tokenResult.data.refresh_token)}
+                          className="px-2 py-1 bg-green-200 hover:bg-green-300 rounded text-xs"
+                        >
+                          <FaCopy />
+                        </button>
+                      </div>
+                      <p className="text-xs text-green-600 mt-2">
+                        Use this token to get a new access token when it expires
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* Refresh Token Section */}
+            {refreshToken && (
+              <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <FaSync className="text-purple-700" />
+                  Refresh Token
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Use your refresh token to get a new access token without re-authenticating. Your access token expires in <strong>{tokenResult?.data?.expires_in ? Math.round(tokenResult.data.expires_in / 60) : '~15'}</strong> minutes.
+                </p>
+                <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                  <p className="text-xs text-purple-800 mb-2">
+                    <strong>What is a Refresh Token?</strong>
+                  </p>
+                  <ul className="text-xs text-purple-700 space-y-1 list-disc list-inside">
+                    <li>Access tokens expire quickly (typically 15 minutes) for security</li>
+                    <li>Refresh tokens are long-lived and can be used to get new access tokens</li>
+                    <li>You don't need to log in again - just use the refresh token</li>
+                    <li>Refresh tokens can be revoked if compromised, limiting damage</li>
+                  </ul>
+                </div>
+                <form onSubmit={handleRefreshToken} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Refresh Token (Auto-filled)
+                    </label>
+                    <input
+                      type="text"
+                      value={refreshToken}
+                      onChange={(e) => setRefreshToken(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs font-mono"
+                      readOnly
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={tokenLoading || !refreshToken}
+                    className="px-6 py-2 bg-purple-700 text-white rounded-lg hover:bg-purple-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {tokenLoading ? <FaSpinner className="animate-spin" /> : <FaSync />}
+                    {tokenLoading ? 'Refreshing Token...' : 'Refresh Access Token'}
+                  </button>
+                </form>
+              </div>
+            )}
 
             {/* UserInfo Endpoint */}
             <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
@@ -693,7 +958,8 @@ function OAuth() {
                 UserInfo Endpoint
               </h2>
               <p className="text-sm text-gray-600 mb-4">
-                API: <code className="bg-gray-100 px-2 py-1 rounded">{OAUTH_BASE_URL}/userinfo</code>
+                API: <code className="bg-gray-100 px-2 py-1 rounded">{OAUTH_USERINFO_URL}/userinfo</code>
+                <span className="text-xs text-gray-500 ml-2">(Uses proxy in dev to avoid CORS)</span>
               </p>
               
               <div className="space-y-4">

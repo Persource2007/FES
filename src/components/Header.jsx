@@ -1,10 +1,148 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { FaGlobe } from 'react-icons/fa'
+import { initiateOAuthLogin, isOAuthLoggedIn, getOAuthUser, logoutOAuth, exchangeCodeForToken, getUserInfo } from '../utils/oauthLogin'
+import OAuthCodeModal from './OAuthCodeModal'
 
 function Header() {
   const location = useLocation()
   const [showTranslateDropdown, setShowTranslateDropdown] = useState(false)
+  const [oauthUser, setOAuthUser] = useState(null)
+  const [isOAuthAuthenticated, setIsOAuthAuthenticated] = useState(false)
+  const [showCodeModal, setShowCodeModal] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingCode, setProcessingCode] = useState(null) // Track which code is being processed
+
+  // Check OAuth login status on mount and when location changes
+  useEffect(() => {
+    const checkOAuthStatus = () => {
+      const loggedIn = isOAuthLoggedIn()
+      setIsOAuthAuthenticated(loggedIn)
+      if (loggedIn) {
+        const user = getOAuthUser()
+        setOAuthUser(user)
+      } else {
+        setOAuthUser(null)
+      }
+    }
+    
+    checkOAuthStatus()
+    // Check periodically in case token expires
+    const interval = setInterval(checkOAuthStatus, 5000)
+    return () => clearInterval(interval)
+  }, [location])
+
+  const handleOAuthLogin = async () => {
+    try {
+      setIsProcessing(true)
+      
+      // Clear any existing tokens before starting a new login
+      // This prevents using stale tokens if the new login fails
+      localStorage.removeItem('oauth_access_token')
+      localStorage.removeItem('oauth_refresh_token')
+      localStorage.removeItem('oauth_user')
+      
+      const code = await initiateOAuthLogin((onCodeSubmit) => {
+        // This callback is called when we need manual code entry
+        setShowCodeModal(true)
+        // Store the submit callback
+        window.oauthCodeSubmitCallback = onCodeSubmit
+      })
+      
+      // If we got the code automatically, process it
+      if (code) {
+        await processOAuthCode(code)
+      }
+    } catch (error) {
+      console.error('OAuth login error:', error)
+      alert(`OAuth login failed: ${error.message}`)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const processOAuthCode = async (code) => {
+    // Prevent processing the same code twice
+    if (processingCode === code) {
+      console.warn('Code already being processed, skipping duplicate call')
+      return
+    }
+    
+    try {
+      setProcessingCode(code)
+      setIsProcessing(true)
+      
+      // Clear any existing tokens before processing new code
+      localStorage.removeItem('oauth_access_token')
+      localStorage.removeItem('oauth_refresh_token')
+      localStorage.removeItem('oauth_user')
+      
+      // Exchange code for token
+      const tokenData = await exchangeCodeForToken(code)
+      
+      // Verify we got a token before proceeding
+      if (!tokenData || !tokenData.access_token) {
+        throw new Error('No access token received from server')
+      }
+      
+      // Get user info
+      const user = await getUserInfo()
+      
+      // Verify we got user info
+      if (!user) {
+        throw new Error('No user information received')
+      }
+      
+      setOAuthUser(user)
+      setIsOAuthAuthenticated(true)
+      // State is already updated, no need to reload the page
+    } catch (error) {
+      console.error('Error processing OAuth code:', error)
+      
+      // Clear tokens on error to prevent using stale data
+      localStorage.removeItem('oauth_access_token')
+      localStorage.removeItem('oauth_refresh_token')
+      localStorage.removeItem('oauth_user')
+      setOAuthUser(null)
+      setIsOAuthAuthenticated(false)
+      
+      const errorMessage = error.response?.data?.error_description 
+        || error.response?.data?.error 
+        || error.message 
+        || 'Unknown error'
+      
+      // More specific error message for invalid_grant
+      if (error.response?.data?.error === 'invalid_grant') {
+        alert(`Login failed: Invalid authorization code.\n\nThis usually means:\n- The code has already been used\n- The code has expired\n- Please try logging in again to get a fresh code.\n\nError: ${errorMessage}`)
+      } else {
+        alert(`Failed to complete login: ${errorMessage}\n\nCheck the browser console for more details.`)
+      }
+    } finally {
+      setIsProcessing(false)
+      setProcessingCode(null)
+    }
+  }
+
+  const handleCodeSubmit = async (code, state) => {
+    setShowCodeModal(false)
+    if (window.oauthCodeSubmitCallback) {
+      // The callback will resolve the promise in initiateOAuthLogin,
+      // which will then call processOAuthCode in handleOAuthLogin
+      // So we don't need to call processOAuthCode here
+      window.oauthCodeSubmitCallback(code)
+      delete window.oauthCodeSubmitCallback
+    } else {
+      // If there's no callback, process directly (fallback)
+      await processOAuthCode(code)
+    }
+  }
+
+  const handleOAuthLogout = () => {
+    logoutOAuth()
+    setOAuthUser(null)
+    setIsOAuthAuthenticated(false)
+    window.location.href = '/'
+  }
 
   const isActive = (path) => {
     if (path === '/') {
@@ -191,12 +329,40 @@ function Header() {
               OAuth
             </Link>
 
-            <Link
-              to="/login"
-              className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors font-medium shadow-md hover:shadow-lg"
-            >
-              Login
-            </Link>
+            {isOAuthAuthenticated && oauthUser ? (
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-800">
+                    {oauthUser.name || oauthUser.preferred_username || 'User'}
+                  </p>
+                  {oauthUser.sub && (
+                    <p className="text-xs text-gray-600">ID: {oauthUser.sub}</p>
+                  )}
+                </div>
+                <button
+                  onClick={handleOAuthLogout}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium shadow-md hover:shadow-lg text-sm"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={handleOAuthLogin}
+                  disabled={isProcessing}
+                  className="bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition-colors font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isProcessing ? 'Processing...' : 'OLogin'}
+                </button>
+                <Link
+                  to="/login"
+                  className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors font-medium shadow-md hover:shadow-lg"
+                >
+                  Login
+                </Link>
+              </>
+            )}
           </nav>
 
           {/* Mobile menu button */}
@@ -215,6 +381,17 @@ function Header() {
           </button>
         </div>
       </div>
+      
+      <OAuthCodeModal
+        isOpen={showCodeModal}
+        onClose={() => {
+          setShowCodeModal(false)
+          if (window.oauthCodeSubmitCallback) {
+            delete window.oauthCodeSubmitCallback
+          }
+        }}
+        onSubmit={handleCodeSubmit}
+      />
     </header>
   )
 }
