@@ -32,3 +32,19 @@ dist-ssr
 email_template.txt
 email_update_2025-12-03.txt
 
+# Test files
+test_*.php
+*.test.php
+
+# SQL scripts (migration helpers)
+*.sql
+drop_*.sql
+
+# Backend storage (logs, cache, sessions)
+backend/storage/logs/*
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+!backend/storage/logs/.gitkeep
+!backend/storage/framework/.gitkeep
+
