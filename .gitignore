@@ -48,9 +48,11 @@ backend/storage/framework/views/*
 !backend/storage/logs/.gitkeep
 !backend/storage/framework/.gitkeep
 
-# Markdown documentation files - ignore all except architecture files
+# Markdown documentation files - ignore all except architecture files, README, and CHANGELOG
 *.md
 !ARCHITECTURE_DIAGRAMS.md
 !CURRENT_ARCHITECTURE.md
+!README.md
+!CHANGELOG.md
 backend/*.md
 
