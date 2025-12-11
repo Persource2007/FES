@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { FaGlobe } from 'react-icons/fa'
+import { FaGlobe, FaTachometerAlt } from 'react-icons/fa'
 import { initiateOAuthLogin, isOAuthLoggedIn, getOAuthUser, logoutOAuth, exchangeCodeForToken, getUserInfo } from '../utils/oauthLogin'
+import { useError } from '../contexts/ErrorContext'
 import OAuthCodeModal from './OAuthCodeModal'
 
 function Header() {
   const location = useLocation()
+  const { showError, showWarning } = useError()
   const [showTranslateDropdown, setShowTranslateDropdown] = useState(false)
   const [oauthUser, setOAuthUser] = useState(null)
   const [isOAuthAuthenticated, setIsOAuthAuthenticated] = useState(false)
@@ -15,20 +17,26 @@ function Header() {
 
   // Check OAuth login status on mount and when location changes
   useEffect(() => {
-    const checkOAuthStatus = () => {
-      const loggedIn = isOAuthLoggedIn()
-      setIsOAuthAuthenticated(loggedIn)
-      if (loggedIn) {
-        const user = getOAuthUser()
-        setOAuthUser(user)
-      } else {
+    const checkOAuthStatus = async () => {
+      try {
+        const loggedIn = await isOAuthLoggedIn()
+        setIsOAuthAuthenticated(loggedIn)
+        if (loggedIn) {
+          const user = getOAuthUser() || await getUserInfo()
+          setOAuthUser(user)
+        } else {
+          setOAuthUser(null)
+        }
+      } catch (error) {
+        // Session expired or not found
+        setIsOAuthAuthenticated(false)
         setOAuthUser(null)
       }
     }
     
     checkOAuthStatus()
-    // Check periodically in case token expires
-    const interval = setInterval(checkOAuthStatus, 5000)
+    // Check periodically in case session expires (less frequent now - every 30 seconds)
+    const interval = setInterval(checkOAuthStatus, 30000)
     return () => clearInterval(interval)
   }, [location])
 
@@ -36,10 +44,7 @@ function Header() {
     try {
       setIsProcessing(true)
       
-      // Clear any existing tokens before starting a new login
-      // This prevents using stale tokens if the new login fails
-      localStorage.removeItem('oauth_access_token')
-      localStorage.removeItem('oauth_refresh_token')
+      // Clear any existing user data before starting a new login
       localStorage.removeItem('oauth_user')
       
       const code = await initiateOAuthLogin((onCodeSubmit) => {
@@ -55,7 +60,10 @@ function Header() {
       }
     } catch (error) {
       console.error('OAuth login error:', error)
-      alert(`OAuth login failed: ${error.message}`)
+      showError(
+        error.message || 'OAuth login failed. Please try again.',
+        'OAuth Login Failed'
+      )
     } finally {
       setIsProcessing(false)
     }
@@ -72,50 +80,58 @@ function Header() {
       setProcessingCode(code)
       setIsProcessing(true)
       
-      // Clear any existing tokens before processing new code
-      localStorage.removeItem('oauth_access_token')
-      localStorage.removeItem('oauth_refresh_token')
+      // Clear any existing user data before processing new code
       localStorage.removeItem('oauth_user')
       
-      // Exchange code for token
-      const tokenData = await exchangeCodeForToken(code)
+      // Exchange code for tokens via BFF - returns user info and sets session cookie
+      const response = await exchangeCodeForToken(code)
       
-      // Verify we got a token before proceeding
-      if (!tokenData || !tokenData.access_token) {
-        throw new Error('No access token received from server')
-      }
-      
-      // Get user info
-      const user = await getUserInfo()
+      // BFF returns user info directly in response.data.user
+      const user = response?.user || response?.data?.user
       
       // Verify we got user info
       if (!user) {
-        throw new Error('No user information received')
+        throw new Error('No user information received from server')
       }
       
       setOAuthUser(user)
       setIsOAuthAuthenticated(true)
-      // State is already updated, no need to reload the page
+      
+      // Stay on current page after successful login (no redirect)
     } catch (error) {
       console.error('Error processing OAuth code:', error)
       
-      // Clear tokens on error to prevent using stale data
-      localStorage.removeItem('oauth_access_token')
-      localStorage.removeItem('oauth_refresh_token')
+      // Clear user data on error
       localStorage.removeItem('oauth_user')
       setOAuthUser(null)
       setIsOAuthAuthenticated(false)
       
-      const errorMessage = error.response?.data?.error_description 
-        || error.response?.data?.error 
+      const errorMessage = error.response?.data?.message
         || error.message 
         || 'Unknown error'
       
-      // More specific error message for invalid_grant
-      if (error.response?.data?.error === 'invalid_grant') {
-        alert(`Login failed: Invalid authorization code.\n\nThis usually means:\n- The code has already been used\n- The code has expired\n- Please try logging in again to get a fresh code.\n\nError: ${errorMessage}`)
+      // Determine error type based on message
+      let errorTitle = 'Login Failed'
+      let errorType = 'error'
+      
+      if (errorMessage.includes('no role') || errorMessage.includes('role') || error.response?.status === 403) {
+        errorTitle = 'Access Denied'
+        errorType = 'warning'
+        showWarning(
+          'Your account does not have a role assigned. Please contact an administrator to assign you a role.',
+          errorTitle
+        )
+      } else if (errorMessage.includes('not exist') || errorMessage.includes('not found')) {
+        errorTitle = 'User Not Found'
+        showError(
+          'The user account does not exist. Please contact an administrator.',
+          errorTitle
+        )
       } else {
-        alert(`Failed to complete login: ${errorMessage}\n\nCheck the browser console for more details.`)
+        showError(
+          `${errorMessage}\n\nCheck the browser console for more details.`,
+          errorTitle
+        )
       }
     } finally {
       setIsProcessing(false)
@@ -137,8 +153,8 @@ function Header() {
     }
   }
 
-  const handleOAuthLogout = () => {
-    logoutOAuth()
+  const handleOAuthLogout = async () => {
+    await logoutOAuth()
     setOAuthUser(null)
     setIsOAuthAuthenticated(false)
     window.location.href = '/'
@@ -333,12 +349,19 @@ function Header() {
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-800">
-                    {oauthUser.name || oauthUser.preferred_username || 'User'}
+                    {oauthUser.name || oauthUser.email || 'User'}
                   </p>
-                  {oauthUser.sub && (
-                    <p className="text-xs text-gray-600">ID: {oauthUser.sub}</p>
+                  {oauthUser.role && (
+                    <p className="text-xs text-gray-600">Role: {oauthUser.role.name || oauthUser.role_name}</p>
                   )}
                 </div>
+                <Link
+                  to="/dashboard"
+                  className="flex items-center gap-2 bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors font-medium shadow-md hover:shadow-lg text-sm"
+                >
+                  <FaTachometerAlt className="text-sm" />
+                  Dashboard
+                </Link>
                 <button
                   onClick={handleOAuthLogout}
                   className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium shadow-md hover:shadow-lg text-sm"
@@ -347,21 +370,13 @@ function Header() {
                 </button>
               </div>
             ) : (
-              <>
-                <button
-                  onClick={handleOAuthLogin}
-                  disabled={isProcessing}
-                  className="bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition-colors font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isProcessing ? 'Processing...' : 'OLogin'}
-                </button>
-                <Link
-                  to="/login"
-                  className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors font-medium shadow-md hover:shadow-lg"
-                >
-                  Login
-                </Link>
-              </>
+              <button
+                onClick={handleOAuthLogin}
+                disabled={isProcessing}
+                className="bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition-colors font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isProcessing ? 'Processing...' : 'Login'}
+              </button>
             )}
           </nav>
 

@@ -59,23 +59,15 @@ function Login() {
         // Show success message
         toast.success(response.message || 'Welcome! You have logged in successfully.')
         
-        // Use window.location as fallback if navigate doesn't work
-        console.log('Attempting navigation...')
+        // Redirect to home page instead of dashboard
+        console.log('Login successful, redirecting to home...')
         try {
-          navigate('/dashboard', { replace: true })
+          navigate('/', { replace: true })
           console.log('Navigate called successfully')
-          
-          // Fallback: if navigation doesn't work after 500ms, use window.location
-          setTimeout(() => {
-            if (window.location.pathname === '/login') {
-              console.log('Navigation failed, using window.location fallback')
-              window.location.href = '/dashboard'
-            }
-          }, 500)
         } catch (navError) {
           console.error('Navigation error:', navError)
           // Fallback to window.location
-          window.location.href = '/dashboard'
+          window.location.href = '/'
         }
       } else {
         console.error('Login response invalid:', response)
