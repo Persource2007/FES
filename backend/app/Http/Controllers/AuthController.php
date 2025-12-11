@@ -443,12 +443,15 @@ class AuthController extends Controller
             return $this->errorResponse('No active session', 401);
         }
         
-        $session = DB::table('sessions')
-            ->where('id', $sessionId)
-            ->where('expires_at', '>', \Carbon\Carbon::now())
-            ->first();
+        // Use Session model to get the session (middleware should have already refreshed if needed)
+        $session = Session::find($sessionId);
         
         if (!$session) {
+            return $this->errorResponse('Session not found', 401);
+        }
+        
+        // Check if token is expired (middleware should have refreshed it, but double-check)
+        if ($session->isExpired()) {
             return $this->errorResponse('Session expired', 401);
         }
         
@@ -501,6 +504,7 @@ class AuthController extends Controller
             }
         }
         
+        // Return token expiry information so frontend knows when token expires
         return $this->successResponse([
             'user' => [
                 'id' => $user->id,
@@ -511,6 +515,10 @@ class AuthController extends Controller
                 'organization_id' => $user->organization_id,
                 'organization_name' => $organizationName,
                 'permissions' => $permissions,
+            ],
+            'token' => [
+                'expires_at' => $session->expires_at->format('Y-m-d H:i:s'),
+                'expires_in' => max(0, \Carbon\Carbon::now()->diffInSeconds($session->expires_at)),
             ],
         ]);
     }

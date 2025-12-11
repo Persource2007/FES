@@ -178,4 +178,3 @@ class AuthenticateSession
         $authController->updateSessionTokens($session->id, $tokenResponse);
     }
 }
-

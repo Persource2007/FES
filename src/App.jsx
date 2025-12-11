@@ -12,6 +12,8 @@ import StoryDetail from './pages/StoryDetail'
 import OAuth from './pages/OAuth'
 import OAuthCallback from './pages/OAuthCallback'
 import DashboardAPI from './pages/DashboardAPI'
+import UserForm from './pages/UserForm'
+import OrganizationForm from './pages/OrganizationForm'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -41,10 +43,42 @@ function App() {
           }
         />
         <Route
+          path="/dashboard/organizations/new"
+          element={
+            <ProtectedRoute>
+              <OrganizationForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/organizations/:id/edit"
+          element={
+            <ProtectedRoute>
+              <OrganizationForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboard/users"
           element={
             <ProtectedRoute>
               <Users />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/users/new"
+          element={
+            <ProtectedRoute>
+              <UserForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/users/:id/edit"
+          element={
+            <ProtectedRoute>
+              <UserForm />
             </ProtectedRoute>
           }
         />

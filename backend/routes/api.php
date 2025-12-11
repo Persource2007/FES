@@ -22,8 +22,8 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     
     // OAuth BFF routes
     $router->post('/auth/oauth/callback', 'AuthController@oauthCallback');
-    $router->get('/auth/me', 'AuthController@getCurrentUser');
-    $router->post('/auth/logout', 'AuthController@logout');
+    $router->get('/auth/me', ['middleware' => 'auth.session', 'uses' => 'AuthController@getCurrentUser']);
+    $router->post('/auth/logout', ['middleware' => 'auth.session', 'uses' => 'AuthController@logout']);
     
     // Add more auth routes as needed
     // $router->post('/auth/register', 'AuthController@register');

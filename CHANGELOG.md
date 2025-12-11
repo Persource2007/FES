@@ -1898,3 +1898,101 @@ When making changes to the project:
 
 **Last Updated:** December 11, 2025
 
+---
+
+### December 11, 2025 (Afternoon Session)
+
+#### Frontend - Removed Automatic Dashboard Redirect
+
+**File: `src/pages/Login.jsx`**
+- Removed automatic redirect to dashboard after login - Users now redirect to home page (`/`) instead
+- Improved user experience - Users can choose when to access dashboard
+
+**File: `src/components/Header.jsx`**
+- Removed automatic redirect after OAuth login - Users stay on current page after successful OAuth authentication
+- Better user flow - No forced navigation after login
+
+#### Frontend - Replaced Modal Popups with Full-Page Forms
+
+**File: `src/pages/UserForm.jsx`** (NEW)
+- Created dedicated user form page - Full-page form for creating and editing users
+- Route: `/dashboard/users/new` (create) and `/dashboard/users/:id/edit` (edit)
+- Includes all fields: name, email, password, role, organization
+- Better UX with full-width layout and clear navigation
+
+**File: `src/pages/OrganizationForm.jsx`** (NEW)
+- Created dedicated organization form page - Full-page form for creating and editing organizations
+- Route: `/dashboard/organizations/new` (create) and `/dashboard/organizations/:id/edit` (edit)
+- Includes all fields: name, region/state
+- Improved clarity and user experience
+
+**File: `src/pages/Users.jsx`**
+- Removed modal popup code - Replaced with navigation to form pages
+- Removed unused state and functions - Cleaned up `showAddModal`, `editingUser`, `formData`, `handleAddUser`, `handleUpdateUser`
+- Updated "Add New User" button - Now navigates to `/dashboard/users/new`
+- Updated "Edit User" button - Now navigates to `/dashboard/users/:id/edit`
+
+**File: `src/pages/Organizations.jsx`**
+- Removed modal popup code - Replaced with navigation to form pages
+- Removed unused state and functions - Cleaned up `showAddModal`, `editingOrganization`, `formData`, `handleAddOrganization`, `handleUpdateOrganization`
+- Updated "Add New Organization" button - Now navigates to `/dashboard/organizations/new`
+- Updated "Edit Organization" button - Now navigates to `/dashboard/organizations/:id/edit`
+
+**File: `src/App.jsx`**
+- Added new routes for form pages:
+  - `/dashboard/users/new` - Create user form
+  - `/dashboard/users/:id/edit` - Edit user form
+  - `/dashboard/organizations/new` - Create organization form
+  - `/dashboard/organizations/:id/edit` - Edit organization form
+
+#### Backend - Token Refresh Improvements
+
+**File: `backend/routes/api.php`**
+- Added `auth.session` middleware to `/api/auth/me` route - Enables automatic token refresh on user info requests
+- Added `auth.session` middleware to `/api/auth/logout` route - Ensures session validation on logout
+
+**File: `backend/app/Http/Controllers/AuthController.php`**
+- Updated `getCurrentUser()` method - Now uses Session model instead of raw DB query
+- Added token expiry information to response - Returns `token.expires_at` and `token.expires_in` for frontend awareness
+- Improved session handling - Better integration with middleware token refresh
+
+**File: `backend/app/Http/Middleware/AuthenticateSession.php`**
+- Fixed null check bug - Added null check after reloading session after token refresh (prevents fatal error)
+- Improved error handling - Better error messages when session not found after refresh
+
+#### Frontend - Form Validation Improvements
+
+**File: `src/pages/UserForm.jsx`**
+- Added `organization_id` validation - Frontend now validates organization selection (matches backend requirements)
+- Improved validation messages - Clear error messages for missing role or organization
+- Better user experience - Prevents backend validation errors by catching issues on frontend
+
+#### Configuration - Git Ignore Updates
+
+**File: `.gitignore`**
+- Updated markdown file handling - Only architecture-related MD files are tracked in repository
+- Allowed files: `ARCHITECTURE_DIAGRAMS.md`, `CURRENT_ARCHITECTURE.md`, `README.md`, `CHANGELOG.md`
+- Removed from repository: `BFF_IMPLEMENTATION_GUIDE.md`, `MICROSERVICES_SETUP.md`, `backend/README.md`, `backend/api-docs/README.md`
+
+#### Issues Resolved
+
+**User Experience:**
+- ✅ Modal popups replaced - Full-page forms provide better clarity and more space
+- ✅ Navigation improved - Clear routes for create/edit operations
+- ✅ Login redirect fixed - No forced redirect to dashboard after login
+
+**Token Management:**
+- ✅ Token expiry information - Backend now returns token expiry data to frontend
+- ✅ Middleware protection - `/api/auth/me` and `/api/auth/logout` now use session middleware
+- ✅ Null check bug fixed - Prevents fatal error when session not found after refresh
+
+**Validation:**
+- ✅ Organization validation - Frontend now validates organization_id before submission
+- ✅ Better error messages - Clear validation feedback for users
+
+**Code Quality:**
+- ✅ Code cleanup - Removed unused imports, state variables, and functions
+- ✅ Better organization - Separated form logic into dedicated pages
+
+**Last Updated:** December 11, 2025
+

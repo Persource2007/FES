@@ -6,10 +6,9 @@ import {
   FaPlus,
   FaEdit,
   FaTrash,
-  FaTimes,
   FaCheck,
 } from 'react-icons/fa'
-import { useApi, useMutation } from '../hooks/useApi'
+import { useApi } from '../hooks/useApi'
 import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
@@ -20,21 +19,9 @@ import { formatDateSimple } from '../utils/dateFormat'
 function Users() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [editingUser, setEditingUser] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [updatingRole, setUpdatingRole] = useState(false)
-  const [updatingUser, setUpdatingUser] = useState(false)
   const [togglingStatus, setTogglingStatus] = useState(null)
-
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role_id: '',
-    organization_id: '',
-  })
 
   // Fetch users
   const {
@@ -60,10 +47,6 @@ function Users() {
     execute: fetchOrganizations,
   } = useApi(API_ENDPOINTS.ORGANIZATIONS.LIST, { immediate: false })
 
-  // Mutations
-  const { execute: createUser, loading: creating } = useMutation(
-    API_ENDPOINTS.USERS.CREATE
-  )
 
   // Check authentication and role
   // Support both OAuth (oauth_user) and old local login (user)
@@ -122,66 +105,9 @@ function Users() {
     }
   }, [user])
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
-  }
-
-  const handleAddUser = async (e) => {
-    e.preventDefault()
-    
-    // Validate that role_id is selected
-    if (!formData.role_id || formData.role_id === '' || formData.role_id === null) {
-      toast.error('Please select a role for the user')
-      return
-    }
-
-    // Validate role_id is a valid integer
-    const roleId = parseInt(formData.role_id)
-    if (isNaN(roleId) || roleId <= 0) {
-      toast.error('Please select a valid role')
-      return
-    }
-
-    try {
-      await createUser(formData)
-      toast.success('User created successfully')
-      
-      // Log activity (fire-and-forget, don't block on error)
-      const roleName = roles.find(r => r.id === parseInt(formData.role_id))?.role_name || 'Unknown'
-      const orgName = organizations.find(o => o.id === parseInt(formData.organization_id))?.name || 'Unknown'
-      addActivity('create', `Created new user: ${formData.name} (${formData.email}) with role: ${roleName} in organization: ${orgName}`, {
-        userEmail: formData.email,
-        userName: formData.name,
-        roleName: roleName,
-        organizationName: orgName,
-      }).catch(err => console.error('Failed to log create activity:', err))
-      
-      setShowAddModal(false)
-      setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
-      fetchUsers()
-    } catch (error) {
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to create user'
-      toast.error(errorMessage)
-    }
-  }
 
   const handleEditUser = (userItem) => {
-    setEditingUser(userItem)
-    setFormData({
-      name: userItem.name,
-      email: userItem.email,
-      password: '', // Don't pre-fill password
-      role_id: userItem.role_id || '', // Ensure it's empty string if null, not null
-      organization_id: userItem.organization_id || '',
-    })
-    setShowAddModal(true)
+    navigate(`/dashboard/users/${userItem.id}/edit`)
   }
 
   const handleToggleUserStatus = async (userId, currentStatus) => {
@@ -235,91 +161,6 @@ function Users() {
     }
   }
 
-  const handleUpdateUser = async (e) => {
-    e.preventDefault()
-    if (!editingUser) return
-
-    // Validate that role_id is selected
-    if (!formData.role_id || formData.role_id === '' || formData.role_id === null) {
-      toast.error('Please select a role for the user')
-      return
-    }
-
-    setUpdatingUser(true)
-    try {
-      // Get user info before update for activity log
-      const userToUpdate = users.find(u => u.id === editingUser.id)
-      const oldRoleName = userToUpdate?.role_name || 'Unknown'
-      const newRoleName = roles.find(r => r.id === parseInt(formData.role_id))?.role_name || 'Unknown'
-      const oldOrgName = userToUpdate?.organization_name || 'None'
-      const newOrgName = organizations.find(o => o.id === parseInt(formData.organization_id))?.name || 'None'
-
-      // Validate role_id is a valid integer
-      const roleId = parseInt(formData.role_id)
-      if (isNaN(roleId) || roleId <= 0) {
-        toast.error('Please select a valid role')
-        setUpdatingUser(false)
-        return
-      }
-
-      // Use apiClient directly for dynamic URL
-      const response = await apiClient({
-        method: 'PUT',
-        url: API_ENDPOINTS.USERS.UPDATE_ROLE(editingUser.id),
-        data: { 
-          name: formData.name,
-          email: formData.email,
-          role_id: roleId,
-          organization_id: parseInt(formData.organization_id),
-        },
-      })
-
-      console.log('User update response:', response.data)
-
-      toast.success('User updated successfully')
-
-      // Log activity (fire-and-forget, don't block on error)
-      if (userToUpdate) {
-        const changes = []
-        if (oldRoleName !== newRoleName) {
-          changes.push(`Role: ${oldRoleName} → ${newRoleName}`)
-        }
-        if (oldOrgName !== newOrgName) {
-          changes.push(`Organization: ${oldOrgName} → ${newOrgName}`)
-        }
-        if (userToUpdate.name !== formData.name) {
-          changes.push(`Name: ${userToUpdate.name} → ${formData.name}`)
-        }
-        if (userToUpdate.email !== formData.email) {
-          changes.push(`Email: ${userToUpdate.email} → ${formData.email}`)
-        }
-        addActivity('edit', `Updated ${userToUpdate.name} (${userToUpdate.email}): ${changes.join(', ')}`, {
-          userId: editingUser.id,
-          userName: formData.name,
-          userEmail: formData.email,
-          oldRole: oldRoleName,
-          newRole: newRoleName,
-          oldOrganization: oldOrgName,
-          newOrganization: newOrgName,
-        }).catch(err => console.error('Failed to log edit activity:', err))
-      }
-
-      setEditingUser(null)
-      setShowAddModal(false)
-      setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
-      fetchUsers()
-    } catch (error) {
-      console.error('Error updating user:', error)
-      console.error('Error response:', error.response)
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to update user'
-      toast.error(errorMessage)
-    } finally {
-      setUpdatingUser(false)
-    }
-  }
 
   const handleLogout = () => {
     localStorage.removeItem('authToken')
@@ -409,7 +250,7 @@ function Users() {
           {/* Add User Button */}
           <div className="mb-6">
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => navigate('/dashboard/users/new')}
             className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors"
           >
             <FaPlus /> Add New User
@@ -528,143 +369,6 @@ function Users() {
         </div>
       </main>
 
-      {/* Add/Edit User Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">
-                {editingUser ? 'Edit User' : 'Add New User'}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAddModal(false)
-                  setEditingUser(null)
-                  setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <FaTimes />
-              </button>
-            </div>
-            <form onSubmit={editingUser ? handleUpdateUser : handleAddUser} className="px-6 py-4">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                  />
-                </div>
-                {!editingUser && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      required
-                      minLength={1}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    />
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
-                  </label>
-                  <select
-                    name="role_id"
-                    value={formData.role_id}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    disabled={rolesLoading}
-                  >
-                    <option value="">Select a role</option>
-                    {roles.map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {role.role_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Organization *
-                  </label>
-                  <select
-                    name="organization_id"
-                    value={formData.organization_id}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    disabled={organizationsLoading}
-                  >
-                    <option value="">Select an organization</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.name} {org.region_name ? `(${org.region_name})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Users will automatically get access to categories assigned to their organization's region. Region will be set automatically from the organization.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false)
-                    setEditingUser(null)
-                    setFormData({ name: '', email: '', password: '', role_id: '', organization_id: '' })
-                  }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating || updatingUser}
-                  className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
-                >
-                  {editingUser
-                    ? updatingUser
-                      ? 'Updating...'
-                      : 'Update User'
-                    : creating
-                    ? 'Creating...'
-                    : 'Create User'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (

@@ -6,9 +6,8 @@ import {
   FaPlus,
   FaEdit,
   FaTrash,
-  FaTimes,
 } from 'react-icons/fa'
-import { useApi, useMutation } from '../hooks/useApi'
+import { useApi } from '../hooks/useApi'
 import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
@@ -19,17 +18,9 @@ import { formatDateSimple } from '../utils/dateFormat'
 function Organizations() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [editingOrganization, setEditingOrganization] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [updatingOrganization, setUpdatingOrganization] = useState(false)
   const [togglingStatus, setTogglingStatus] = useState(null)
 
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    region_id: '',
-  })
 
   // Fetch organizations
   const {
@@ -47,10 +38,6 @@ function Organizations() {
     execute: fetchRegions,
   } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
 
-  // Mutations
-  const { execute: createOrganization, loading: creating } = useMutation(
-    API_ENDPOINTS.ORGANIZATIONS.CREATE
-  )
 
   // Check authentication and role
   // Support both OAuth (oauth_user) and old local login (user)
@@ -116,67 +103,9 @@ function Organizations() {
     }
   }, [user])
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
-  }
-
-  const handleAddOrganization = async (e) => {
-    e.preventDefault()
-    try {
-      // Ensure region_id is an integer
-      const payload = {
-        name: formData.name,
-        region_id: parseInt(formData.region_id),
-      }
-      
-      await createOrganization(payload)
-      toast.success('Organization created successfully')
-      
-      // Log activity
-      const regionName = regions.find(r => r.id === parseInt(formData.region_id))?.name || 'Unknown'
-      addActivity('create', `Created new organization: ${formData.name} in region: ${regionName}`, {
-        organizationName: formData.name,
-        regionName: regionName,
-      }).catch(err => console.error('Failed to log create activity:', err))
-      
-      setShowAddModal(false)
-      setFormData({ name: '', region_id: '' })
-      fetchOrganizations()
-    } catch (error) {
-      console.error('Error creating organization:', error)
-      console.error('Error response:', error.response)
-      
-      // Show more detailed error message
-      let errorMessage = 'Failed to create organization'
-      if (error.response?.data) {
-        if (error.response.data.errors) {
-          // Validation errors
-          const errorDetails = Object.entries(error.response.data.errors)
-            .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`)
-            .join('; ')
-          errorMessage = `Validation failed: ${errorDetails}`
-        } else if (error.response.data.message) {
-          errorMessage = error.response.data.message
-        }
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-      
-      toast.error(errorMessage)
-    }
-  }
 
   const handleEditOrganization = (organization) => {
-    setEditingOrganization(organization)
-    setFormData({
-      name: organization.name,
-      region_id: organization.region_id || '',
-    })
-    setShowAddModal(true)
+    navigate(`/dashboard/organizations/${organization.id}/edit`)
   }
 
   const handleToggleOrganizationStatus = async (organizationId, currentStatus) => {
@@ -230,67 +159,6 @@ function Organizations() {
     }
   }
 
-  const handleUpdateOrganization = async (e) => {
-    e.preventDefault()
-    if (!editingOrganization) return
-
-    setUpdatingOrganization(true)
-    try {
-      // Get organization info before update for activity log
-      const organizationToUpdate = organizations.find(o => o.id === editingOrganization.id)
-      const oldRegionName = organizationToUpdate?.region_name || 'None'
-      const newRegionName = regions.find(r => r.id === parseInt(formData.region_id))?.name || 'None'
-
-      // Ensure region_id is an integer
-      const payload = {
-        name: formData.name,
-        region_id: parseInt(formData.region_id),
-      }
-      
-      // Use apiClient directly for dynamic URL
-      const response = await apiClient({
-        method: 'PUT',
-        url: API_ENDPOINTS.ORGANIZATIONS.UPDATE(editingOrganization.id),
-        data: payload,
-      })
-
-      console.log('Organization update response:', response.data)
-
-      toast.success('Organization updated successfully')
-
-      // Log activity
-      if (organizationToUpdate) {
-        const changes = []
-        if (oldRegionName !== newRegionName) {
-          changes.push(`Region: ${oldRegionName} → ${newRegionName}`)
-        }
-        if (organizationToUpdate.name !== formData.name) {
-          changes.push(`Name: ${organizationToUpdate.name} → ${formData.name}`)
-        }
-        addActivity('edit', `Updated organization ${organizationToUpdate.name}: ${changes.join(', ')}`, {
-          organizationId: editingOrganization.id,
-          organizationName: formData.name,
-          oldRegion: oldRegionName,
-          newRegion: newRegionName,
-        }).catch(err => console.error('Failed to log edit activity:', err))
-      }
-
-      setEditingOrganization(null)
-      setShowAddModal(false)
-      setFormData({ name: '', region_id: '' })
-      fetchOrganizations()
-    } catch (error) {
-      console.error('Error updating organization:', error)
-      console.error('Error response:', error.response)
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to update organization'
-      toast.error(errorMessage)
-    } finally {
-      setUpdatingOrganization(false)
-    }
-  }
 
   const handleLogout = () => {
     localStorage.removeItem('authToken')
@@ -368,7 +236,7 @@ function Organizations() {
           {/* Add Organization Button */}
           <div className="mb-6">
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => navigate('/dashboard/organizations/new')}
               className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors"
             >
               <FaPlus /> Add New Organization
@@ -473,91 +341,6 @@ function Organizations() {
         </div>
       </main>
 
-      {/* Add/Edit Organization Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">
-                {editingOrganization ? 'Edit Organization' : 'Add New Organization'}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAddModal(false)
-                  setEditingOrganization(null)
-                  setFormData({ name: '', region_id: '' })
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <FaTimes />
-              </button>
-            </div>
-            <form onSubmit={editingOrganization ? handleUpdateOrganization : handleAddOrganization} className="px-6 py-4">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Organization Name
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Region/State
-                  </label>
-                  <select
-                    name="region_id"
-                    value={formData.region_id}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    disabled={regionsLoading}
-                  >
-                    <option value="">Select a region</option>
-                    {regions.map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false)
-                    setEditingOrganization(null)
-                    setFormData({ name: '', region_id: '' })
-                  }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating || updatingOrganization}
-                  className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
-                >
-                  {editingOrganization
-                    ? updatingOrganization
-                      ? 'Updating...'
-                      : 'Update Organization'
-                    : creating
-                    ? 'Creating...'
-                    : 'Create Organization'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
