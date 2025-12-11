@@ -37,9 +37,9 @@ graph TB
     
     subgraph "External Services"
         D[OAuth Server<br/>192.168.14.16:9090]
-        D1[/oauth2/authorize]
-        D2[/oauth2/token]
-        D3[/userinfo]
+        D1[Authorize Endpoint]
+        D2[Token Endpoint]
+        D3[UserInfo Endpoint]
         D --> D1
         D --> D2
         D --> D3
