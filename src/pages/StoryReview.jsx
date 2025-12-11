@@ -42,10 +42,14 @@ function StoryReview() {
   )
 
   // Check authentication
+  // Support both OAuth (oauth_user) and old local login (user)
   useEffect(() => {
-    const userData = localStorage.getItem('user')
+    const oauthUserData = localStorage.getItem('oauth_user')
+    const oldUserData = localStorage.getItem('user')
+    const userData = oauthUserData || oldUserData
+    
     if (!userData) {
-      navigate('/login')
+      navigate('/')
       return
     }
 
@@ -61,7 +65,7 @@ function StoryReview() {
       }
     } catch (e) {
       console.error('Error parsing user data:', e)
-      navigate('/login')
+      navigate('/')
     }
   }, [navigate])
 

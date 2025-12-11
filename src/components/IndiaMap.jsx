@@ -65,11 +65,19 @@ function IndiaMap({
   const fetchCategories = async () => {
     try {
       const response = await apiClient.get(API_ENDPOINTS.STORY_CATEGORIES.LIST)
+      console.log('Categories response:', response.data)
       if (response.data.success) {
         setCategories(response.data.categories || [])
+      } else {
+        console.error('Categories API returned success=false:', response.data)
       }
     } catch (error) {
       console.error('Error fetching categories:', error)
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      })
     }
   }
 

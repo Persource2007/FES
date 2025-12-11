@@ -1,4 +1,4 @@
-/vendor/
+/ vendor/
 /.idea
 /.vscode
 /.vagrant
@@ -12,3 +12,7 @@ yarn-error.log
 storage/*.key
 storage/logs/*.log
 
+# Markdown documentation files (temporary guides)
+ENABLE_OPENSSL.md
+REFRESH_TOKEN_IMPLEMENTATION.md
+RESTART_SERVER.md

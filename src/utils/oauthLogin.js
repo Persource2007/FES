@@ -224,7 +224,8 @@ export const submitOAuthCode = (code, state = null) => {
   return false
 }
 
-// Exchange authorization code for access token
+// Exchange authorization code for tokens via BFF (Backend for Frontend)
+// This sends the code to our backend, which handles token exchange server-side
 export const exchangeCodeForToken = async (code) => {
   const codeVerifier = localStorage.getItem('oauth_code_verifier')
   
@@ -277,95 +278,50 @@ export const exchangeCodeForToken = async (code) => {
     }
   }
   
-  // Ensure redirect_uri is exactly what we expect (no localhost) - match OAuth page exactly
-  const redirectUri = OAUTH_CONFIG.redirectUri.trim()
-  if (redirectUri.includes('localhost')) {
-    console.error('ERROR: Redirect URI contains localhost!', redirectUri)
-    throw new Error('Invalid redirect URI configuration')
-  }
-  
-  // Match OAuth page implementation exactly - same parameter construction
-  const formData = new URLSearchParams()
-  formData.append('grant_type', 'authorization_code')
-  if (cleanCode) formData.append('code', cleanCode)
-  if (redirectUri) formData.append('redirect_uri', redirectUri)
-  if (OAUTH_CONFIG.clientId) formData.append('client_id', OAUTH_CONFIG.clientId)
-  if (codeVerifier) formData.append('code_verifier', codeVerifier)
-  
-  // Log all parameters being sent
-  console.log('=== Token Exchange Parameters ===')
-  console.log('grant_type: authorization_code')
-  console.log('code (original):', code)
-  console.log('code (cleaned):', cleanCode)
-  console.log('redirect_uri:', redirectUri)
-  console.log('client_id:', OAUTH_CONFIG.clientId)
-  console.log('code_verifier:', codeVerifier ? 'Present' : 'Missing')
-  console.log('Form Data:', formData.toString())
-  console.log('==================================')
-  
-  const basicAuth = btoa(`${OAUTH_CONFIG.clientId}:${OAUTH_CONFIG.clientSecret}`)
-  
   try {
-    // Match OAuth page exactly - use proxy URL construction
-    const tokenUrl = OAUTH_CONFIG.tokenUrl
+    // Import API client
+    const apiClient = (await import('./api')).default
+    const { API_ENDPOINTS } = await import('./constants')
     
-    console.log('=== Token Exchange Request ===')
-    console.log('Token URL:', tokenUrl)
-    console.log('Request Data:', Object.fromEntries(formData))
-    console.log('Client ID:', OAUTH_CONFIG.clientId)
-    console.log('Client Secret:', OAUTH_CONFIG.clientSecret ? 'Present' : 'Missing')
-    console.log('Redirect URI:', redirectUri)
+    console.log('=== BFF OAuth Callback Request ===')
     console.log('Code (cleaned):', cleanCode)
     console.log('Code Verifier:', codeVerifier ? 'Present' : 'Missing')
-    console.log('Using Basic Auth (client_id:client_secret)')
-    console.log('=============================')
+    console.log('Endpoint:', API_ENDPOINTS.AUTH.OAUTH_CALLBACK)
+    console.log('===================================')
     
-    const response = await axios.post(tokenUrl, formData, {
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-        'Authorization': `Basic ${basicAuth}`, // Basic Auth with client_id:client_secret
-      },
-      withCredentials: false,
+    // Send code to BFF backend - tokens are handled server-side
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.OAUTH_CALLBACK, {
+      code: cleanCode,
+      code_verifier: codeVerifier,
     })
     
-    console.log('=== Token Exchange Response ===')
+    console.log('=== BFF OAuth Callback Response ===')
     console.log('Status:', response.status)
     console.log('Data:', response.data)
-    console.log('================================')
+    console.log('===================================')
     
-    // Store tokens
-    if (response.data.access_token) {
-      localStorage.setItem('oauth_access_token', response.data.access_token)
-    }
-    if (response.data.refresh_token) {
-      localStorage.setItem('oauth_refresh_token', response.data.refresh_token)
-    }
-    
-    // Clean up
+    // Clean up PKCE data
     localStorage.removeItem('oauth_code_verifier')
     localStorage.removeItem('oauth_state')
     
+    // BFF returns user info and sets session cookie automatically
+    // Store user info in localStorage (but NOT tokens - they're in HTTP-only cookie)
+    if (response.data.user) {
+      localStorage.setItem('oauth_user', JSON.stringify(response.data.user))
+    }
+    
     return response.data
   } catch (error) {
-    console.error('=== Token Exchange Error ===')
+    console.error('=== BFF OAuth Callback Error ===')
     console.error('Error Message:', error.message)
     console.error('Response Status:', error.response?.status)
     console.error('Response Data:', error.response?.data)
-    console.error('Request Config:', {
-      url: error.config?.url,
-      data: error.config?.data,
-      headers: error.config?.headers,
-    })
-    console.error('===========================')
+    console.error('===============================')
     
     // Create a more detailed error message
-    const errorMessage = error.response?.data?.error_description 
-      || error.response?.data?.error 
-      || error.response?.data?.message
+    const errorMessage = error.response?.data?.message
       || error.message
-      || 'Unknown error during token exchange'
+      || 'Unknown error during authentication'
     
     const detailedError = new Error(errorMessage)
     detailedError.response = error.response
@@ -374,50 +330,42 @@ export const exchangeCodeForToken = async (code) => {
   }
 }
 
-// Get user info using access token
+// Get user info from BFF (checks session)
 export const getUserInfo = async () => {
-  const accessToken = localStorage.getItem('oauth_access_token')
-  
-  if (!accessToken) {
-    throw new Error('Access token not found. Please log in again.')
-  }
-  
   try {
-    // Match OAuth page - use proxy URL
-    const userInfoUrl = OAUTH_CONFIG.userInfoUrl
+    const apiClient = (await import('./api')).default
+    const { API_ENDPOINTS } = await import('./constants')
     
-    const response = await axios.get(userInfoUrl, {
-      timeout: 30000,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json',
-      },
-      withCredentials: false,
-    })
+    const response = await apiClient.get(API_ENDPOINTS.AUTH.ME)
     
-    // Store user info
-    if (response.data) {
-      localStorage.setItem('oauth_user', JSON.stringify(response.data))
+    // Store user info in localStorage (but NOT tokens - they're in HTTP-only cookie)
+    if (response.data.user) {
+      localStorage.setItem('oauth_user', JSON.stringify(response.data.user))
+      return response.data.user
     }
     
-    return response.data
+    return null
   } catch (error) {
-    console.error('UserInfo error:', error)
-    // If token expired, clear it
+    console.error('Get user info error:', error)
+    // If session expired, clear local state
     if (error.response?.status === 401) {
-      localStorage.removeItem('oauth_access_token')
       localStorage.removeItem('oauth_user')
     }
     throw error
   }
 }
 
-// Check if user is logged in via OAuth
-export const isOAuthLoggedIn = () => {
-  return !!localStorage.getItem('oauth_access_token')
+// Check if user is logged in via OAuth (by checking session)
+export const isOAuthLoggedIn = async () => {
+  try {
+    const user = await getUserInfo()
+    return !!user
+  } catch (error) {
+    return false
+  }
 }
 
-// Get stored OAuth user
+// Get stored OAuth user (from localStorage)
 export const getOAuthUser = () => {
   const userStr = localStorage.getItem('oauth_user')
   if (userStr) {
@@ -430,12 +378,23 @@ export const getOAuthUser = () => {
   return null
 }
 
-// Logout OAuth user
-export const logoutOAuth = () => {
-  localStorage.removeItem('oauth_access_token')
-  localStorage.removeItem('oauth_refresh_token')
-  localStorage.removeItem('oauth_user')
-  localStorage.removeItem('oauth_code_verifier')
-  localStorage.removeItem('oauth_state')
+// Logout OAuth user (calls BFF logout endpoint)
+export const logoutOAuth = async () => {
+  try {
+    const apiClient = (await import('./api')).default
+    const { API_ENDPOINTS } = await import('./constants')
+    
+    // Call BFF logout endpoint to destroy session
+    await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT)
+  } catch (error) {
+    console.error('Logout error:', error)
+  } finally {
+    // Clear local state regardless of API call result
+    localStorage.removeItem('oauth_user')
+    localStorage.removeItem('oauth_code_verifier')
+    localStorage.removeItem('oauth_state')
+    localStorage.removeItem('oauth_access_token') // Legacy cleanup
+    localStorage.removeItem('oauth_refresh_token') // Legacy cleanup
+  }
 }
 

@@ -10,6 +10,8 @@ export const API_ENDPOINTS = {
     REGISTER: '/api/auth/register',
     REFRESH: '/api/auth/refresh',
     PROFILE: '/api/auth/profile',
+    OAUTH_CALLBACK: '/api/auth/oauth/callback',
+    ME: '/api/auth/me',
   },
   // User endpoints
   USERS: {

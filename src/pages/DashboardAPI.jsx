@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FaCode, FaSpinner, FaCheckCircle, FaExclamationCircle, FaCopy, FaMapMarkerAlt } from 'react-icons/fa'
 import Sidebar from '../components/Sidebar'
 import { canManageUsers } from '../utils/permissions'
+import { useError } from '../contexts/ErrorContext'
 import axios from 'axios'
 
 // Use proxy in development to avoid CORS issues, direct URL in production
@@ -12,11 +13,16 @@ const API_BASE_URL = import.meta.env.DEV
 
 function DashboardAPI() {
   const navigate = useNavigate()
+  const { showError, showInfo } = useError()
   const [user, setUser] = useState(null)
 
   // Load user data from localStorage on mount and check permissions
+  // Support both OAuth (oauth_user) and old local login (user)
   useEffect(() => {
-    const userData = localStorage.getItem('user')
+    const oauthUserData = localStorage.getItem('oauth_user')
+    const oldUserData = localStorage.getItem('user')
+    const userData = oauthUserData || oldUserData
+    
     if (userData) {
       try {
         const parsedUser = JSON.parse(userData)
@@ -29,16 +35,17 @@ function DashboardAPI() {
         }
       } catch (e) {
         console.error('Error parsing user data:', e)
-        navigate('/login', { replace: true })
+        navigate('/', { replace: true })
       }
     } else {
-      navigate('/login', { replace: true })
+      navigate('/', { replace: true })
     }
   }, [navigate])
 
   const handleLogout = () => {
     localStorage.removeItem('authToken')
     localStorage.removeItem('user')
+    localStorage.removeItem('oauth_user')
   }
 
   // Hierarchical selection state
@@ -344,7 +351,7 @@ function DashboardAPI() {
   // Test other endpoints
   const testGetRegionsByParent = async () => {
     if (!parentId) {
-      alert('Please enter a parent ID')
+      showError('Please enter a parent ID', 'Missing Input')
       return
     }
     try {
@@ -369,7 +376,7 @@ function DashboardAPI() {
 
   const testGetGeometry = async () => {
     if (!regionId) {
-      alert('Please enter a region ID')
+      showError('Please enter a region ID', 'Missing Input')
       return
     }
     try {
@@ -394,7 +401,7 @@ function DashboardAPI() {
 
   const testGetRegionDetailsByLatLon = async () => {
     if (!lat || !lon) {
-      alert('Please enter both latitude and longitude')
+      showError('Please enter both latitude and longitude', 'Missing Input')
       return
     }
     try {
@@ -420,7 +427,7 @@ function DashboardAPI() {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text)
-    alert('Copied to clipboard!')
+    showInfo('Copied to clipboard!', 'Success')
   }
 
   const renderResult = (key) => {

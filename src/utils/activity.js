@@ -8,10 +8,14 @@ import { API_ENDPOINTS } from './constants'
 
 /**
  * Get current user ID from localStorage
+ * Supports both OAuth (oauth_user) and old local login (user)
  */
 const getCurrentUserId = () => {
   try {
-    const userData = localStorage.getItem('user')
+    const oauthUserData = localStorage.getItem('oauth_user')
+    const oldUserData = localStorage.getItem('user')
+    const userData = oauthUserData || oldUserData
+    
     if (!userData) return null
     const user = JSON.parse(userData)
     return user?.id || null

@@ -8,7 +8,11 @@ info:
     
     **Base URL:** `http://localhost:8000`
     
-    **Authentication:** Currently not required for public endpoints (will be added for protected endpoints)
+    **Authentication:** 
+    - **OAuth 2.0 with PKCE:** Uses Backend-for-Frontend (BFF) pattern for secure token management
+    - **Session-based:** Protected endpoints require HTTP-only `session_id` cookie
+    - **Public endpoints:** Health check, regions, published stories, and categories are publicly accessible
+    - **Token refresh:** Automatic token refresh within 5-minute threshold before expiration
     
     **Activity Tracking:** All user activities are logged to the database. Users can only view their own activities.
     
@@ -169,6 +173,187 @@ paths:
               example:
                 success: false
                 message: "An error occurred during login"
+
+  /api/auth/oauth/callback:
+    post:
+      tags:
+        - Authentication
+      summary: OAuth Callback (BFF)
+      description: |
+        Handles OAuth 2.0 authorization code exchange via Backend-for-Frontend (BFF) pattern.
+        
+        **Flow:**
+        1. Frontend receives authorization code from OAuth server
+        2. Frontend sends code and code_verifier to this BFF endpoint
+        3. BFF exchanges code for tokens with OAuth server
+        4. BFF fetches user info from OAuth server
+        5. BFF creates/updates local user record
+        6. BFF creates server-side session with encrypted tokens
+        7. BFF returns HTTP-only cookie with session_id
+        
+        **Security:** Tokens are stored server-side in encrypted database, never exposed to client
+      operationId: oauthCallback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthCallbackRequest'
+            examples:
+              validCallback:
+                summary: Valid OAuth callback
+                value:
+                  code: "abc123def456"
+                  code_verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      responses:
+        '200':
+          description: OAuth login successful
+          headers:
+            Set-Cookie:
+              description: HTTP-only session cookie
+              schema:
+                type: string
+                example: "session_id=abc123def456; Path=/; HttpOnly; SameSite=Lax"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthCallbackSuccess'
+              example:
+                success: true
+                message: "Login successful"
+                user:
+                  id: 1
+                  name: "John Doe"
+                  email: "john@example.com"
+                  role:
+                    id: 1
+                    name: "Super admin"
+        '400':
+          description: Validation error or invalid authorization code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Invalid authorization code"
+        '401':
+          description: User not found or no role assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "User not found in database. Please contact the administrator to create an account for you."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred during authentication"
+
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get Current User (BFF)
+      description: |
+        Retrieves the current authenticated user from the session cookie.
+        
+        **Authentication:** Requires valid `session_id` HTTP-only cookie
+        
+        **Flow:**
+        1. Client sends request with session_id cookie
+        2. BFF validates session cookie
+        3. BFF checks session expiration
+        4. BFF returns user data with role information
+        
+        **Token Refresh:** Automatically refreshes tokens if they are about to expire (within 5 minutes)
+      operationId: getCurrentUser
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCurrentUserSuccess'
+              example:
+                success: true
+                user:
+                  id: 1
+                  name: "John Doe"
+                  email: "john@example.com"
+                  role:
+                    id: 1
+                    name: "Super admin"
+        '401':
+          description: No active session or session expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "No active session"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred while retrieving user"
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout (BFF)
+      description: |
+        Logs out the current user by destroying the server-side session.
+        
+        **Flow:**
+        1. Client sends logout request with session_id cookie
+        2. BFF deletes session from database
+        3. BFF expires session cookie
+        4. Client clears localStorage
+        
+        **Security:** Session is permanently deleted from database, cannot be reused
+      operationId: logout
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          headers:
+            Set-Cookie:
+              description: Expired session cookie
+              schema:
+                type: string
+                example: "session_id=; Path=/; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutSuccess'
+              example:
+                success: true
+                message: "Logged out successfully"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "An error occurred during logout"
 
   /api/users:
     get:
@@ -2072,6 +2257,62 @@ components:
         user:
           $ref: '#/components/schemas/UserWithRole'
 
+    OAuthCallbackRequest:
+      type: object
+      required:
+        - code
+        - code_verifier
+      properties:
+        code:
+          type: string
+          description: Authorization code received from OAuth server
+          example: "abc123def456"
+        code_verifier:
+          type: string
+          description: Code verifier used in PKCE flow (must match code_challenge sent to authorization endpoint)
+          example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+
+    OAuthCallbackSuccess:
+      type: object
+      required:
+        - success
+        - message
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Login successful"
+        user:
+          $ref: '#/components/schemas/UserWithRole'
+
+    GetCurrentUserSuccess:
+      type: object
+      required:
+        - success
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        user:
+          $ref: '#/components/schemas/UserWithRole'
+
+    LogoutSuccess:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Logged out successfully"
+
     UserWithRole:
       type: object
       properties:
@@ -3355,4 +3596,24 @@ components:
           example: "Organization status updated successfully"
         organization:
           $ref: '#/components/schemas/Organization'
+
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session_id
+      description: |
+        HTTP-only session cookie containing the session ID.
+        
+        **How it works:**
+        1. After successful OAuth login via `/api/auth/oauth/callback`, the server sets an HTTP-only cookie named `session_id`
+        2. This cookie is automatically sent with all subsequent requests to the same domain
+        3. The server validates the session_id against the sessions table
+        4. If valid, the request is authenticated; if invalid or expired, returns 401 Unauthorized
+        
+        **Security:**
+        - Cookie is HTTP-only (not accessible via JavaScript)
+        - Cookie is SameSite=Lax (CSRF protection)
+        - Session tokens are encrypted in database
+        - Sessions expire automatically based on token expiration
 

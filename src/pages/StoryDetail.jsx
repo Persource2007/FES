@@ -18,6 +18,7 @@ import apiClient from '../utils/api'
 import { API_ENDPOINTS } from '../utils/constants'
 import { generateSlug, getStoryIdFromSlug, getStorySlug } from '../utils/slug'
 import { formatDate } from '../utils/dateFormat'
+import { useError } from '../contexts/ErrorContext'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import IndiaMap from '../components/IndiaMap'
@@ -25,6 +26,7 @@ import IndiaMap from '../components/IndiaMap'
 function StoryDetail() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const { showError, showInfo } = useError()
   const [story, setStory] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -141,7 +143,7 @@ function StoryDetail() {
       setAudioRecording(true)
     } catch (err) {
       console.error('Error starting recording:', err)
-      alert('Could not access microphone. Please check permissions.')
+      showError('Could not access microphone. Please check permissions.', 'Microphone Access Denied')
     }
   }
 
@@ -186,8 +188,8 @@ function StoryDetail() {
     try {
       setSubmittingComment(true)
       // TODO: Implement comment submission API
-      // For now, just show an alert
-      alert('Comment submission will be implemented with backend API')
+      // For now, just show an info message
+      showInfo('Comment submission will be implemented with backend API', 'Coming Soon')
       
       // Reset form
       setComment('')
@@ -197,7 +199,7 @@ function StoryDetail() {
       }
     } catch (err) {
       console.error('Error submitting comment:', err)
-      alert('Failed to submit comment')
+      showError('Failed to submit comment', 'Comment Submission Error')
     } finally {
       setSubmittingComment(false)
     }

@@ -11,13 +11,15 @@ function Activity() {
   const [activities, setActivities] = useState([])
 
   // Load user data from localStorage on mount
+  // Support both OAuth (oauth_user) and old local login (user)
   useEffect(() => {
-    const userData = localStorage.getItem('user')
-    const authToken = localStorage.getItem('authToken')
+    const oauthUserData = localStorage.getItem('oauth_user')
+    const oldUserData = localStorage.getItem('user')
+    const userData = oauthUserData || oldUserData
 
-    // Redirect to login if not authenticated
-    if (!userData || !authToken) {
-      navigate('/login')
+    // Redirect to home if not authenticated (OAuth login is handled via Header)
+    if (!userData) {
+      navigate('/')
       return
     }
 
@@ -26,9 +28,10 @@ function Activity() {
         setUser(JSON.parse(userData))
       } catch (e) {
         console.error('Error parsing user data:', e)
+        localStorage.removeItem('oauth_user')
         localStorage.removeItem('user')
         localStorage.removeItem('authToken')
-        navigate('/login')
+        navigate('/')
       }
     }
   }, [navigate])

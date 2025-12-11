@@ -66,10 +66,14 @@ function Users() {
   )
 
   // Check authentication and role
+  // Support both OAuth (oauth_user) and old local login (user)
   useEffect(() => {
-    const userData = localStorage.getItem('user')
+    const oauthUserData = localStorage.getItem('oauth_user')
+    const oldUserData = localStorage.getItem('user')
+    const userData = oauthUserData || oldUserData
+    
     if (!userData) {
-      navigate('/login')
+      navigate('/')
       return
     }
 
@@ -95,7 +99,7 @@ function Users() {
       }
     } catch (e) {
       console.error('Error parsing user data:', e)
-      navigate('/login')
+      navigate('/')
     }
   }, [navigate])
 
@@ -128,6 +132,20 @@ function Users() {
 
   const handleAddUser = async (e) => {
     e.preventDefault()
+    
+    // Validate that role_id is selected
+    if (!formData.role_id || formData.role_id === '' || formData.role_id === null) {
+      toast.error('Please select a role for the user')
+      return
+    }
+
+    // Validate role_id is a valid integer
+    const roleId = parseInt(formData.role_id)
+    if (isNaN(roleId) || roleId <= 0) {
+      toast.error('Please select a valid role')
+      return
+    }
+
     try {
       await createUser(formData)
       toast.success('User created successfully')
@@ -160,7 +178,7 @@ function Users() {
       name: userItem.name,
       email: userItem.email,
       password: '', // Don't pre-fill password
-      role_id: userItem.role_id,
+      role_id: userItem.role_id || '', // Ensure it's empty string if null, not null
       organization_id: userItem.organization_id || '',
     })
     setShowAddModal(true)
@@ -221,6 +239,12 @@ function Users() {
     e.preventDefault()
     if (!editingUser) return
 
+    // Validate that role_id is selected
+    if (!formData.role_id || formData.role_id === '' || formData.role_id === null) {
+      toast.error('Please select a role for the user')
+      return
+    }
+
     setUpdatingUser(true)
     try {
       // Get user info before update for activity log
@@ -230,6 +254,14 @@ function Users() {
       const oldOrgName = userToUpdate?.organization_name || 'None'
       const newOrgName = organizations.find(o => o.id === parseInt(formData.organization_id))?.name || 'None'
 
+      // Validate role_id is a valid integer
+      const roleId = parseInt(formData.role_id)
+      if (isNaN(roleId) || roleId <= 0) {
+        toast.error('Please select a valid role')
+        setUpdatingUser(false)
+        return
+      }
+
       // Use apiClient directly for dynamic URL
       const response = await apiClient({
         method: 'PUT',
@@ -237,7 +269,7 @@ function Users() {
         data: { 
           name: formData.name,
           email: formData.email,
-          role_id: parseInt(formData.role_id),
+          role_id: roleId,
           organization_id: parseInt(formData.organization_id),
         },
       })

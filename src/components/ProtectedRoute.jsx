@@ -12,15 +12,18 @@ import { canManageUsers } from '../utils/permissions'
  * @param {boolean} props.requireSuperAdmin - If true, only super admin (canManageUsers) can access
  */
 function ProtectedRoute({ children, requireSuperAdmin = false }) {
-  // Check if user is logged in (has user data in localStorage)
-  const userData = localStorage.getItem('user')
-  const authToken = localStorage.getItem('authToken')
+  // Check if user is logged in via OAuth (BFF pattern)
+  // OAuth users are stored in 'oauth_user', old local login users in 'user'
+  const oauthUserData = localStorage.getItem('oauth_user')
+  const oldUserData = localStorage.getItem('user')
 
-  // If user is not authenticated, redirect to login
-  // Note: authToken is optional if backend doesn't provide it
-  if (!userData) {
-    return <Navigate to="/login" replace />
+  // If no user data found, redirect to home (OAuth login is handled via Header)
+  if (!oauthUserData && !oldUserData) {
+    return <Navigate to="/" replace />
   }
+
+  // Use OAuth user if available, otherwise fall back to old user
+  const userData = oauthUserData || oldUserData
 
   // If super admin access is required, check permissions
   if (requireSuperAdmin) {
@@ -31,8 +34,8 @@ function ProtectedRoute({ children, requireSuperAdmin = false }) {
         return <Navigate to="/dashboard" replace />
       }
     } catch (e) {
-      // If user data is invalid, redirect to login
-      return <Navigate to="/login" replace />
+      // If user data is invalid, redirect to home
+      return <Navigate to="/" replace />
     }
   }
 

@@ -1632,3 +1632,269 @@ When making changes to the project:
 
 **Last Updated:** December 10, 2025
 
+---
+
+### December 11, 2025
+
+#### Backend-for-Frontend (BFF) Pattern Implementation
+
+**File: `backend/database/migrations/2025_12_11_000001_create_sessions_table.php`** (NEW)
+- Created sessions table migration - Stores encrypted OAuth access and refresh tokens server-side
+- Table structure: `id` (string, 40 chars), `user_id`, `oauth_access_token` (encrypted), `oauth_refresh_token` (encrypted, nullable), `expires_at`, `created_at`, `updated_at`
+- Foreign key constraint to `users` table with cascade delete
+- Indexes on `user_id` and `expires_at` for performance
+
+**File: `backend/app/Models/Session.php`** (NEW)
+- Created Session model - Eloquent model for sessions table
+- Token decryption methods - `getAccessTokenAttribute()` and `getRefreshTokenAttribute()` automatically decrypt stored tokens
+- User relationship - `belongsTo(User::class)` relationship
+- Primary key configuration - String-based primary key (`id`), non-incrementing
+
+**File: `backend/app/Http/Controllers/AuthController.php`**
+- Added `oauthCallback()` method - Handles OAuth authorization code exchange via BFF
+  - Receives authorization code and code_verifier from frontend
+  - Exchanges code for tokens with OAuth server
+  - Fetches user info from OAuth server
+  - Creates or updates local user record
+  - Creates server-side session with encrypted tokens
+  - Returns HTTP-only cookie with session_id
+- Added `getCurrentUser()` method - Retrieves current authenticated user from session cookie
+  - Validates session_id cookie
+  - Checks session expiration
+  - Returns user data with role information
+- Added `logout()` method - Destroys server-side session and clears cookie
+  - Deletes session from database
+  - Expires session cookie
+- Added `refreshAccessToken()` method - Refreshes expired access tokens using refresh token
+  - Calls OAuth server token endpoint with refresh_token grant
+  - Returns new token response
+- Added `updateSessionTokens()` method - Updates session with new tokens after refresh
+  - Encrypts and stores new access token
+  - Updates refresh token if provided
+  - Updates expiration timestamp
+- Fixed `now()` calls - Replaced with `\Carbon\Carbon::now()` for namespace resolution
+- Fixed cookie handling - Uses `Symfony\Component\HttpFoundation\Cookie` objects for proper cookie setting
+- Environment variable configuration - OAuth settings moved to `config/oauth.php` and `.env` file
+
+**File: `backend/app/Http/Middleware/AuthenticateSession.php`** (NEW)
+- Created session authentication middleware - Validates session_id cookie on protected routes
+- Session validation - Checks cookie existence, session validity, and expiration
+- Automatic token refresh - Proactively refreshes tokens within 5-minute threshold before expiration
+- Reactive token refresh - Attempts to refresh expired tokens using refresh_token
+- User attachment - Attaches authenticated user to request via `setUserResolver()`
+- Error handling - Returns 401 Unauthorized for invalid or expired sessions
+
+**File: `backend/bootstrap/app.php`**
+- Registered `AuthenticateSession` middleware - Added as `auth.session` route middleware
+- Configured OAuth config file - Added `$app->configure('oauth')` to load OAuth configuration
+- Registered EncryptionServiceProvider - Explicitly registered for `encrypt()` helper function support
+- Set Carbon default timezone - Added `\Carbon\Carbon::setDefaultTimezone(env('APP_TIMEZONE', 'Asia/Kolkata'))` for IST support
+
+**File: `backend/config/oauth.php`** (NEW)
+- Created OAuth configuration file - Centralized OAuth settings loaded from environment variables
+- Configuration options:
+  - `server_url`, `client_id`, `client_secret`, `redirect_uri`, `scope`
+  - `authorize_url`, `token_url`, `userinfo_url`
+  - `session_lifetime_minutes` (default: 7 days)
+  - `default_token_expires_in` (default: 15 minutes)
+
+**File: `backend/.env`**
+- Added OAuth configuration variables:
+  - `OAUTH_SERVER_URL=http://192.168.14.16:9090`
+  - `OAUTH_CLIENT_ID=commonstories`
+  - `OAUTH_CLIENT_SECRET=a1a8ab04c6b245e7742a87c146d945f399139e85`
+  - `OAUTH_REDIRECT_URI=https://geet.observatory.org.in`
+  - `OAUTH_SCOPE=read`
+- Updated `APP_TIMEZONE` - Changed from `UTC` to `Asia/Kolkata` for IST timezone
+
+**File: `backend/routes/api.php`**
+- Added OAuth BFF routes:
+  - `POST /api/auth/oauth/callback` - OAuth callback endpoint
+  - `GET /api/auth/me` - Get current user session
+  - `POST /api/auth/logout` - Logout endpoint
+- Applied `auth.session` middleware - Added to all protected routes (organizations, users, activities, story categories, stories)
+- Made categories public - Moved `GET /api/story-categories` outside middleware for public access
+- Fixed route shadowing - Reordered routes to ensure static routes come before variable routes
+
+**File: `backend/composer.json`**
+- Added Guzzle HTTP client - `guzzlehttp/guzzle: ^7.0` for OAuth server communication
+
+#### Frontend - OAuth BFF Integration
+
+**File: `src/utils/oauthLogin.js`**
+- Updated `initiateOAuthLogin()` - Sends authorization code to BFF endpoint instead of direct token exchange
+- Removed client-side token storage - Tokens no longer stored in localStorage
+- Updated `exchangeCodeForToken()` - Now sends code to `/api/auth/oauth/callback` BFF endpoint
+- Updated `logoutOAuth()` - Calls BFF logout endpoint and clears localStorage
+
+**File: `src/utils/api.js`**
+- Added `withCredentials: true` - Enables sending HTTP-only cookies with requests
+- Removed Authorization header logic - No longer sends tokens in headers (handled by cookies)
+- Updated 401 error handling - Clears `oauth_user` from localStorage, prevents redirects on public pages
+- Changed redirect target - Redirects to `/` (home) instead of `/login` on 401 errors
+- Added logout request check - Prevents redirect during logout requests
+
+**File: `src/utils/constants.js`**
+- Added new OAuth BFF endpoints:
+  - `OAUTH_CALLBACK: '/api/auth/oauth/callback'`
+  - `ME: '/api/auth/me'`
+
+**File: `src/components/Header.jsx`**
+- Updated session checking - Uses `GET /api/auth/me` endpoint to check session status
+- Removed old login button - Removed non-functional login button
+- Added "Dashboard" button - Shows for authenticated users with dashboard link
+- Updated OAuth login flow - Redirects to `/dashboard` on successful login
+- Updated logout flow - Calls BFF logout endpoint and redirects to home
+
+**File: `src/components/ProtectedRoute.jsx`**
+- Updated authentication check - Checks `oauth_user` in localStorage first, then `user` for backward compatibility
+- Changed redirect target - Redirects to `/` (home) instead of `/login` if not authenticated
+
+**File: `src/components/Sidebar.jsx`**
+- Added "Go to Main Site" link - Link to home page above logout button
+- Updated logout handler - Uses passed `onLogout` prop for consistent logout behavior
+
+**File: `src/pages/Dashboard.jsx`**
+- Updated user data retrieval - Checks `oauth_user` first, then `user` for backward compatibility
+- Updated logout handler - Calls `logoutOAuth()` and redirects to home
+- Removed `authToken` check - No longer needed with session-based authentication
+
+**File: `src/pages/Users.jsx`**
+- Updated user data retrieval - Checks `oauth_user` first, then `user`
+- Added frontend validation - Enforces role and organization selection before submission
+- Fixed role display - Shows "Select a role" when `role_id` is null
+
+**File: `src/pages/Organizations.jsx`**
+- Updated user data retrieval - Checks `oauth_user` first, then `user`
+
+**File: `src/pages/Stories.jsx`**
+- Updated user data retrieval - Checks `oauth_user` first, then `user`
+- Removed `user_id` parameter - Backend identifies user via session cookie
+- Updated `fetchCategories()` - No longer requires user_id parameter
+
+**File: `src/pages/StoryReview.jsx`**
+- Updated user data retrieval - Checks `oauth_user` first, then `user`
+
+**File: `src/pages/Activity.jsx`**
+- Updated user data retrieval - Checks `oauth_user` first, then `user`
+
+**File: `src/pages/DashboardAPI.jsx`**
+- Updated user data retrieval - Checks `oauth_user` first, then `user`
+
+**File: `src/utils/activity.js`**
+- Updated `getCurrentUserId()` - Checks `oauth_user` first, then `user` for backward compatibility
+
+#### Backend - Refresh Token Functionality
+
+**File: `backend/app/Http/Middleware/AuthenticateSession.php`**
+- Implemented proactive token refresh - Refreshes tokens within 5-minute threshold before expiration
+- Implemented reactive token refresh - Attempts to refresh expired tokens using refresh_token
+- Added `refreshIfNeeded()` method - Checks if token should be refreshed proactively
+- Added `attemptTokenRefresh()` method - Calls AuthController to refresh tokens and update session
+
+**File: `backend/app/Http/Controllers/AuthController.php`**
+- Added `refreshAccessToken()` method - Exchanges refresh_token for new access_token
+- Added `updateSessionTokens()` method - Updates session with new tokens after refresh
+
+**File: `backend/app/Models/Session.php`**
+- Added `isExpired()` method - Checks if session expiration time has passed
+- Added `getRefreshToken()` method - Returns decrypted refresh token
+
+**File: `backend/REFRESH_TOKEN_IMPLEMENTATION.md`** (NEW)
+- Created refresh token documentation - Comprehensive guide explaining refresh token flow, configuration, and security
+
+#### Backend - Story Category Controller Fixes
+
+**File: `backend/app/Http/Controllers/StoryCategoryController.php`**
+- Fixed `index()` method - Manually checks session cookie to identify authenticated users
+- Allows superadmins to see all categories - Checks session cookie even for public route
+- Simplified category serialization - Removed problematic `organizations` relationship eager loading
+- Improved error handling - Better error logging for debugging
+
+#### Frontend - Category Loading Fixes
+
+**File: `src/pages/Home.jsx`**
+- Categories now load automatically - Public endpoint allows categories to load without authentication
+- Removed authentication requirement - Categories accessible to all users
+
+#### Backend - Session Cleanup
+
+**File: `backend/cleanup_expired_sessions.php`** (NEW)
+- Created manual cleanup script - Deletes expired sessions from database
+- Can be run via cron for automatic cleanup
+
+**File: `backend/view_sessions.php`** (NEW)
+- Created session viewer script - Displays all sessions with user details and expiration status
+
+#### Documentation Updates
+
+**File: `CURRENT_ARCHITECTURE.md`** (NEW)
+- Created architecture diagram - Mermaid diagram showing complete BFF architecture flow
+- Includes authentication, session management, API requests, public routes, and logout flows
+- Fixed Mermaid syntax - Changed node labels to avoid special characters (removed slashes from endpoint names)
+
+**File: `BFF_TESTING_GUIDE.md`** (NEW)
+- Created BFF testing guide - Comprehensive guide for testing BFF implementation
+- Includes frontend login steps, API endpoint testing with cURL/Postman
+- Documents session cookie and localStorage verification
+
+**File: `backend/test_bff_setup.php`** (NEW)
+- Created BFF setup verification script - Checks sessions table, OAuth config, Guzzle installation, Session model, middleware, and routes
+
+#### Configuration & Setup
+
+**File: `backend/ENABLE_OPENSSL.md`** (NEW)
+- Created OpenSSL enablement guide - Instructions for enabling OpenSSL extension in PHP
+
+**File: `backend/enable_openssl.ps1`** (NEW)
+- Created PowerShell script - Automatically adds `extension=openssl` to php.ini
+
+**File: `backend/RESTART_SERVER.md`** (NEW)
+- Created server restart guide - Instructions for restarting PHP server after configuration changes
+
+**File: `backend/assign_super_admin_to_developer.sql`** (NEW)
+- Created SQL script - Queries to assign Super admin role to developer user
+
+#### Issues Resolved
+
+**BFF Implementation:**
+- ✅ OAuth token storage - Moved from client-side localStorage to server-side encrypted database storage
+- ✅ HTTP-only cookies - Implemented secure session management using HTTP-only cookies
+- ✅ Session validation - Added middleware to validate sessions on protected routes
+- ✅ Token refresh - Implemented automatic token refresh (proactive and reactive)
+- ✅ Route protection - Applied `auth.session` middleware to all protected routes
+- ✅ Public routes - Made categories endpoint public for home page access
+
+**Authentication:**
+- ✅ OAuth callback - Implemented BFF pattern for OAuth authorization code exchange
+- ✅ Session management - Server-side session creation and validation
+- ✅ User lookup - Backend checks users table by email and requires role assignment
+- ✅ Logout functionality - Proper session cleanup and cookie expiration
+
+**Backend Fixes:**
+- ✅ `now()` function error - Fixed by using `\Carbon\Carbon::now()` explicitly
+- ✅ Cookie method error - Fixed by using `Symfony\Component\HttpFoundation\Cookie` objects
+- ✅ Route shadowing - Fixed by reordering routes (static before variable)
+- ✅ Categories loading - Fixed by making endpoint public and updating controller logic
+- ✅ Role ordering - Fixed by sorting roles alphabetically in UserController
+- ✅ Frontend validation - Added validation for role and organization selection
+
+**Frontend Fixes:**
+- ✅ Login page redirect - Fixed to prevent unwanted redirects to login page
+- ✅ Dashboard access - Fixed to allow super admin access to dashboard
+- ✅ Old login button - Removed non-functional login button
+- ✅ Logout transition - Fixed to prevent showing `/login` page during logout
+- ✅ Categories loading - Fixed to load automatically on home page
+
+**Timezone:**
+- ✅ UTC to IST conversion - Changed `APP_TIMEZONE` from `UTC` to `Asia/Kolkata`
+- ✅ Carbon timezone - Set Carbon default timezone to IST
+- ✅ Date formatting - Frontend already configured for IST timezone
+
+**Documentation:**
+- ✅ Architecture diagram - Created Mermaid diagram for current BFF architecture
+- ✅ Testing guide - Created comprehensive BFF testing guide
+- ✅ Refresh token docs - Created refresh token implementation documentation
+
+**Last Updated:** December 11, 2025
+

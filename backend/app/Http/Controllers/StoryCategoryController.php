@@ -21,52 +21,127 @@ class StoryCategoryController extends Controller
 {
     /**
      * Get all story categories
-     * Editors can only see categories for their organization's region
-     * Super admins can see all categories
+     * Public access: Returns only active categories
+     * Editors: Can only see active categories for their organization's region
+     * Super admins: Can see all categories (including inactive)
      * 
      * @return JsonResponse
      */
     public function index(): JsonResponse
     {
         try {
-            // Get user making the request from query parameter
+            // Get authenticated user from request (if available)
             $request = app('request');
-            $userId = $request->input('user_id');
-            $user = $userId ? User::find($userId) : null;
-
-            $query = StoryCategory::with('organizations');
-
-            // If user is Editor, filter by organization
-            if ($user) {
-                $userRole = DB::table('roles')
-                    ->where('id', $user->role_id)
-                    ->first();
-
-                $isSuperAdmin = $userRole && $userRole->role_name === 'Super admin';
-                $isEditor = $userRole && $userRole->role_name === 'Editor';
-
-                if ($isEditor && $user->organization_id) {
-                    // Only show categories assigned to this organization
-                    $query->whereHas('organizations', function ($q) use ($user) {
-                        $q->where('organizations.id', $user->organization_id);
-                    });
+            $user = null;
+            
+            try {
+                $user = $request->user(); // Get from middleware if authenticated
+            } catch (\Exception $e) {
+                // Ignore if user() method doesn't exist or fails
+                Log::debug('Could not get user from request', ['error' => $e->getMessage()]);
+            }
+            
+            // If not set via middleware, manually check session cookie (for public routes)
+            if (!$user) {
+                try {
+                    $sessionId = $request->cookie('session_id');
+                    if ($sessionId) {
+                        $session = DB::table('sessions')
+                            ->where('id', $sessionId)
+                            ->where('expires_at', '>', \Carbon\Carbon::now())
+                            ->first();
+                        
+                        if ($session) {
+                            $user = User::find($session->user_id);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Error checking session cookie', ['error' => $e->getMessage()]);
                 }
-                // Super admins see all categories (no filtering)
+            }
+            
+            // Fallback to query parameter for backward compatibility
+            if (!$user) {
+                try {
+                    $userId = $request->input('user_id');
+                    $user = $userId ? User::find($userId) : null;
+                } catch (\Exception $e) {
+                    Log::warning('Error getting user from query param', ['error' => $e->getMessage()]);
+                }
+            }
+
+            // Build query - start simple
+            $query = DB::table('story_categories');
+
+            // If no authenticated user (public access), only show active categories
+            if (!$user) {
+                $query->where('is_active', true);
+            } else {
+                try {
+                    // Authenticated user - check role
+                    $userRole = DB::table('roles')
+                        ->where('id', $user->role_id)
+                        ->first();
+
+                    $isSuperAdmin = $userRole && $userRole->role_name === 'Super admin';
+                    $isEditor = $userRole && $userRole->role_name === 'Editor';
+
+                    if ($isEditor && $user->organization_id) {
+                        // Editors see only active categories assigned to their organization
+                        $query->where('is_active', true)
+                            ->join('category_organizations', 'story_categories.id', '=', 'category_organizations.category_id')
+                            ->where('category_organizations.organization_id', $user->organization_id)
+                            ->select('story_categories.*')
+                            ->distinct();
+                    } elseif (!$isSuperAdmin) {
+                        // Non-super-admin authenticated users see only active categories
+                        $query->where('is_active', true);
+                    }
+                    // Super admins see all categories (including inactive) - no filtering
+                } catch (\Exception $e) {
+                    Log::error('Error building query for authenticated user', [
+                        'user_id' => $user->id ?? null,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    // Fallback to active categories only
+                    $query->where('is_active', true);
+                }
             }
 
             $categories = $query->orderBy('name', 'asc')->get();
+            
+            Log::info('Categories query executed', [
+                'user_id' => $user ? $user->id : null,
+                'categories_count' => $categories->count(),
+            ]);
+
+            // Convert to array
+            $categoriesArray = [];
+            foreach ($categories as $category) {
+                $categoriesArray[] = [
+                    'id' => $category->id,
+                    'name' => $category->name,
+                    'description' => $category->description ?? null,
+                    'is_active' => (bool) $category->is_active,
+                    'created_at' => $category->created_at ?? null,
+                    'updated_at' => $category->updated_at ?? null,
+                ];
+            }
 
             return $this->successResponse([
-                'categories' => $categories,
+                'categories' => $categoriesArray,
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching story categories', [
                 'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
             return $this->errorResponse(
-                'An error occurred while fetching story categories',
+                'An error occurred while fetching story categories: ' . $e->getMessage(),
                 500
             );
         }

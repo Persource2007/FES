@@ -6,7 +6,10 @@ require_once __DIR__ . '/../vendor/autoload.php';
     dirname(__DIR__)
 ))->bootstrap();
 
-date_default_timezone_set(env('APP_TIMEZONE', 'UTC'));
+date_default_timezone_set(env('APP_TIMEZONE', 'Asia/Kolkata'));
+
+// Set Carbon locale (timezone is automatically inherited from date_default_timezone_set)
+\Carbon\Carbon::setLocale('en');
 
 /*
 |--------------------------------------------------------------------------
@@ -25,6 +28,8 @@ $app->withEloquent();
 $app->configure('database');
 // Load migrations configuration
 $app->configure('migrations');
+// Load OAuth configuration
+$app->configure('oauth');
 
 /*
 |--------------------------------------------------------------------------
@@ -42,6 +47,10 @@ $app->singleton(
     App\Console\Kernel::class
 );
 
+// Register encrypter service (required for encrypt() helper)
+// Lumen doesn't register this by default, so we need to do it manually
+$app->register(Illuminate\Encryption\EncryptionServiceProvider::class);
+
 /*
 |--------------------------------------------------------------------------
 | Register Middleware
@@ -54,6 +63,7 @@ $app->middleware([
 
 $app->routeMiddleware([
     // 'auth' => App\Http\Middleware\Authenticate::class,
+    'auth.session' => App\Http\Middleware\AuthenticateSession::class,
 ]);
 
 /*

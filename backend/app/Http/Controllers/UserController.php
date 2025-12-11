@@ -392,7 +392,7 @@ class UserController extends Controller
             $roles = DB::table('roles')
                 ->where('role_name', '!=', 'Super admin')
                 ->select('id', 'role_name')
-                ->orderBy('id')
+                ->orderBy('role_name', 'asc')
                 ->get();
 
             return $this->successResponse([

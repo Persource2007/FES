@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom'
 import { FaFacebook, FaTwitter, FaLinkedin, FaInstagram } from 'react-icons/fa'
+import { useError } from '../contexts/ErrorContext'
 
 function Footer() {
+  const { showInfo } = useError()
+  
   const handleNewsletterSubmit = (e) => {
     e.preventDefault()
     // TODO: Implement newsletter subscription
-    alert('Newsletter subscription coming soon!')
+    showInfo('Newsletter subscription coming soon!', 'Coming Soon')
   }
 
   return (

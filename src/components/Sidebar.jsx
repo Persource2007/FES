@@ -17,6 +17,7 @@ import {
   FaInfoCircle,
   FaBuilding,
   FaCode,
+  FaExternalLinkAlt,
 } from 'react-icons/fa'
 import {
   canManageUsers,
@@ -603,6 +604,25 @@ function Sidebar({ user, onLogout }) {
 
           {/* Hidden Google Translate Element for dashboard pages */}
           <div id="google_translate_element_sidebar" style={{ position: 'absolute', left: '-9999px', opacity: 0, pointerEvents: 'none' }}></div>
+
+          {/* Go to Main Site Button */}
+          <Link
+            to="/"
+            className={`
+              w-full flex items-center ${isOpen ? 'gap-3 px-3' : 'justify-center px-2'} py-2.5 rounded-lg
+              text-blue-400 hover:bg-slate-700 hover:text-blue-300
+              transition-all duration-150
+              mb-2
+            `}
+            title={!isOpen ? 'Go to Main Site' : ''}
+          >
+            <FaExternalLinkAlt className={`${isOpen ? 'text-lg w-5 h-5' : 'text-xl w-6 h-6'} flex-shrink-0`} />
+            {isOpen && (
+              <span className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                Go to Main Site
+              </span>
+            )}
+          </Link>
 
           {/* Logout Button */}
           <button

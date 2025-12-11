@@ -413,6 +413,8 @@ function OAuth() {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(typeof text === 'string' ? text : JSON.stringify(text, null, 2))
+    // Note: OAuth.jsx doesn't have access to useError hook, so we'll keep alert for now
+    // or we can add the hook if needed
     alert('Copied to clipboard!')
   }
 

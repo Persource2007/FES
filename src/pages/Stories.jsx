@@ -49,18 +49,30 @@ function Stories() {
 
   // Fetch categories with user_id for organization filtering
   const fetchCategories = async () => {
-    if (!user?.id) return
+    if (!user?.id) {
+      console.warn('Cannot fetch categories: user not loaded')
+      return
+    }
     setCategoriesLoading(true)
     try {
       const response = await apiClient.get(API_ENDPOINTS.STORY_CATEGORIES.LIST, {
         params: { user_id: user.id }
       })
+      console.log('Categories response:', response.data)
       if (response.data.success) {
         setCategories(response.data.categories || [])
+      } else {
+        console.error('Categories API returned success=false:', response.data)
+        toast.error('Failed to load categories: ' + (response.data.message || 'Unknown error'))
       }
     } catch (error) {
       console.error('Error fetching categories:', error)
-      toast.error('Failed to load categories')
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      })
+      toast.error('Failed to load categories: ' + (error.response?.data?.message || error.message))
     } finally {
       setCategoriesLoading(false)
     }
@@ -140,10 +152,14 @@ function Stories() {
   )
 
   // Check authentication
+  // Support both OAuth (oauth_user) and old local login (user)
   useEffect(() => {
-    const userData = localStorage.getItem('user')
+    const oauthUserData = localStorage.getItem('oauth_user')
+    const oldUserData = localStorage.getItem('user')
+    const userData = oauthUserData || oldUserData
+    
     if (!userData) {
-      navigate('/login')
+      navigate('/')
       return
     }
 
@@ -152,7 +168,7 @@ function Stories() {
       setUser(parsedUser)
     } catch (e) {
       console.error('Error parsing user data:', e)
-      navigate('/login')
+      navigate('/')
     }
   }, [navigate])
 

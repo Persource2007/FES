@@ -7,19 +7,22 @@ import {
   canManageStoryCategories,
   canPostStories,
 } from '../utils/permissions'
+import { logoutOAuth } from '../utils/oauthLogin'
 
 function Dashboard() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
 
   // Load user data from localStorage on mount
+  // Support both OAuth (oauth_user) and old local login (user)
   useEffect(() => {
-    const userData = localStorage.getItem('user')
-    const authToken = localStorage.getItem('authToken')
+    const oauthUserData = localStorage.getItem('oauth_user')
+    const oldUserData = localStorage.getItem('user')
+    const userData = oauthUserData || oldUserData
 
-    // Redirect to login if not authenticated
-    if (!userData || !authToken) {
-      navigate('/login')
+    // Redirect to home if not authenticated (OAuth login is handled via Header)
+    if (!userData) {
+      navigate('/')
       return
     }
 
@@ -29,16 +32,28 @@ function Dashboard() {
       } catch (e) {
         console.error('Error parsing user data:', e)
         // If parsing fails, clear invalid data and redirect
+        localStorage.removeItem('oauth_user')
         localStorage.removeItem('user')
         localStorage.removeItem('authToken')
-        navigate('/login')
+        navigate('/')
       }
     }
   }, [navigate])
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
+  const handleLogout = async () => {
+    try {
+      // Call BFF logout endpoint to destroy session on server
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Clear local state regardless of API call result
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('user')
+      localStorage.removeItem('oauth_user')
+      // Redirect to home page
+      navigate('/')
+    }
   }
 
   const canManageUsersPermission = canManageUsers(user)
