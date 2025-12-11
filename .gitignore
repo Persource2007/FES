@@ -48,12 +48,9 @@ backend/storage/framework/views/*
 !backend/storage/logs/.gitkeep
 !backend/storage/framework/.gitkeep
 
-# Markdown documentation files (temporary guides, keep ARCHITECTURE_DIAGRAMS.md)
-BFF_TESTING_GUIDE.md
-ENABLE_OPENSSL.md
-REFRESH_TOKEN_IMPLEMENTATION.md
-RESTART_SERVER.md
-backend/ENABLE_OPENSSL.md
-backend/REFRESH_TOKEN_IMPLEMENTATION.md
-backend/RESTART_SERVER.md
+# Markdown documentation files - ignore all except architecture files
+*.md
+!ARCHITECTURE_DIAGRAMS.md
+!CURRENT_ARCHITECTURE.md
+backend/*.md
 
