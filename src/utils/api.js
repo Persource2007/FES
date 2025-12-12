@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { API_BASE_URL } from './constants'
 import { showError, showWarning } from './errorHandler'
+import { updateTokenExpiryFromResponse, shouldRefreshToken, refreshToken } from './tokenRefresh'
 
 // Create axios instance with default config
 const apiClient = axios.create({
@@ -37,6 +38,8 @@ apiClient.interceptors.request.use(
 // Response interceptor (e.g., for handling errors globally)
 apiClient.interceptors.response.use(
   (response) => {
+    // Update token expiry from response if available
+    updateTokenExpiryFromResponse(response)
     return response
   },
   (error) => {

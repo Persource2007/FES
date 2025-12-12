@@ -15,8 +15,12 @@ import DashboardAPI from './pages/DashboardAPI'
 import UserForm from './pages/UserForm'
 import OrganizationForm from './pages/OrganizationForm'
 import ProtectedRoute from './components/ProtectedRoute'
+import { useTokenRefresh } from './hooks/useTokenRefresh'
 
 function App() {
+  // Enable proactive token refresh globally
+  useTokenRefresh(true)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Routes>

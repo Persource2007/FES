@@ -395,6 +395,10 @@ export const logoutOAuth = async () => {
     localStorage.removeItem('oauth_state')
     localStorage.removeItem('oauth_access_token') // Legacy cleanup
     localStorage.removeItem('oauth_refresh_token') // Legacy cleanup
+    
+    // Clear token expiry information
+    const { clearTokenExpiry } = await import('./tokenRefresh')
+    clearTokenExpiry()
   }
 }
 

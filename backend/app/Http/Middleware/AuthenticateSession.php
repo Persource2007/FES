@@ -29,6 +29,22 @@ class AuthenticateSession
 
     /**
      * Handle an incoming request.
+     * 
+     * This middleware handles automatic token refresh:
+     * 
+     * Scenario 1: Token is expired but refresh token is valid
+     *   - Automatically refreshes the access token using refresh token
+     *   - Updates session with new token and expiry
+     *   - Continues with the request (user stays logged in)
+     * 
+     * Scenario 2: Token is expired and refresh token is also expired/invalid
+     *   - Attempts to refresh but OAuth server rejects it
+     *   - Returns 401 Unauthorized (user needs to login again)
+     * 
+     * Scenario 3: Token is still valid
+     *   - Checks if token expires within threshold (5 minutes)
+     *   - If yes, proactively refreshes it
+     *   - Continues with the request
      *
      * @param Request $request
      * @param Closure $next
@@ -69,21 +85,36 @@ class AuthenticateSession
         
         // Check if session is expired
         if ($session->isExpired()) {
-            // Try to refresh if we have a refresh token
+            // Token is expired - try to refresh using refresh token
             if ($session->oauth_refresh_token) {
                 try {
+                    Log::info('Token expired, attempting refresh', [
+                        'session_id' => $sessionId,
+                    ]);
+                    
                     $this->attemptTokenRefresh($session);
-                    // Reload session after refresh
+                    
+                    // Reload session after refresh to get updated expiry
                     $session = Session::find($sessionId);
                     
                     // Check again if still expired (refresh might have failed)
                     if ($session->isExpired()) {
+                        Log::warning('Token refresh failed - session still expired', [
+                            'session_id' => $sessionId,
+                        ]);
+                        
                         return response()->json([
                             'success' => false,
                             'message' => 'Unauthorized - Session expired and refresh failed'
                         ], 401);
                     }
+                    
+                    Log::info('Token refreshed successfully', [
+                        'session_id' => $sessionId,
+                        'new_expires_at' => $session->expires_at,
+                    ]);
                 } catch (\Exception $e) {
+                    // Refresh token is expired/invalid or OAuth server error
                     Log::warning('Token refresh failed in middleware', [
                         'session_id' => $sessionId,
                         'error' => $e->getMessage(),
@@ -95,7 +126,11 @@ class AuthenticateSession
                     ], 401);
                 }
             } else {
-                // No refresh token available
+                // No refresh token available - user needs to login again
+                Log::warning('Token expired but no refresh token available', [
+                    'session_id' => $sessionId,
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized - Session expired'
