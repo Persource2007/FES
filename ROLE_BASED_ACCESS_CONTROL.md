@@ -18,7 +18,7 @@ graph TB
     end
 
     subgraph OtherOrg["🏢 Other Organization"]
-        OA["👔 Admin<br/>Org Admin"]
+        OA["👔 Admin<br/>Org Admin<br/>(Can have multi-org access)"]
         OE["✏️ Editor<br/>Org Editor"]
         OW["📝 Writer<br/>Org Writer"]
     end
@@ -50,97 +50,6 @@ graph TB
 
 ---
 
-## Detailed Permission Matrix
-
-```mermaid
-graph LR
-    subgraph Roles["👥 Roles"]
-        SA1[Super Admin]
-        FA1[FES Admin]
-        FE1[FES Editor]
-        FW1[FES Writer]
-        OA1[Org Admin]
-        OE1[Org Editor]
-        OW1[Org Writer]
-    end
-
-    subgraph Permissions["🔐 Permissions"]
-        P1["👤 Manage Users"]
-        P2["📁 Manage Categories"]
-        P3["📖 View Stories"]
-        P4["✍️ Write Stories"]
-        P5["✅ Publish/Review Stories"]
-        P6["🗑️ Delete Stories"]
-        P7["📊 View Activity"]
-    end
-
-    SA1 -->|"All Permissions<br/>All Organizations"| P1
-    SA1 -->|"All Permissions<br/>All Organizations"| P2
-    SA1 -->|"All Permissions<br/>All Organizations"| P3
-    SA1 -->|"All Permissions<br/>All Organizations"| P4
-    SA1 -->|"All Permissions<br/>All Organizations"| P5
-    SA1 -->|"All Permissions<br/>All Organizations"| P6
-    SA1 -->|"All Permissions<br/>All Organizations"| P7
-
-    FA1 -->|"All Orgs<br/>Users: All<br/>Categories: All"| P1
-    FA1 -->|"All Orgs<br/>Categories: All"| P2
-    FA1 -->|"All Orgs"| P3
-    FA1 -->|"All Orgs"| P4
-    FA1 -->|"All Orgs"| P5
-    FA1 -.->|"No"| P6
-    FA1 -->|"All"| P7
-
-    FE1 -->|"No"| P1
-    FE1 -->|"No"| P2
-    FE1 -->|"All Orgs<br/>All Categories"| P3
-    FE1 -->|"All Orgs<br/>All Categories"| P4
-    FE1 -->|"All Orgs<br/>All Categories"| P5
-    FE1 -.->|"No"| P6
-    FE1 -.->|"No"| P7
-
-    FW1 -->|"No"| P1
-    FW1 -->|"No"| P2
-    FW1 -->|"Own Stories Only"| P3
-    FW1 -->|"All Orgs<br/>All Categories"| P4
-    FW1 -.->|"No<br/>Submit for Review"| P5
-    FW1 -.->|"No"| P6
-    FW1 -.->|"No"| P7
-
-    OA1 -->|"Own Org Only<br/>Editors & Writers"| P1
-    OA1 -->|"Own Org Categories<br/>Can Create"| P2
-    OA1 -->|"Own Org"| P3
-    OA1 -->|"Own Org"| P4
-    OA1 -->|"Own Org"| P5
-    OA1 -.->|"No"| P6
-    OA1 -.->|"Limited"| P7
-
-    OE1 -->|"No"| P1
-    OE1 -->|"No"| P2
-    OE1 -->|"Own Org<br/>Own Categories"| P3
-    OE1 -->|"Own Org<br/>Own Categories"| P4
-    OE1 -->|"Own Org<br/>Own Categories"| P5
-    OE1 -.->|"No"| P6
-    OE1 -.->|"No"| P7
-
-    OW1 -->|"No"| P1
-    OW1 -->|"No"| P2
-    OW1 -->|"Own Stories Only"| P3
-    OW1 -->|"Own Org<br/>Own Categories"| P4
-    OW1 -.->|"No<br/>Submit for Review"| P5
-    OW1 -.->|"No"| P6
-    OW1 -.->|"No"| P7
-
-    style SA1 fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#fff
-    style FA1 fill:#4ecdc4,stroke:#087f5b,stroke-width:2px,color:#fff
-    style OA1 fill:#4ecdc4,stroke:#087f5b,stroke-width:2px,color:#fff
-    style FE1 fill:#95e1d3,stroke:#0ca678,stroke-width:2px
-    style OE1 fill:#95e1d3,stroke:#0ca678,stroke-width:2px
-    style FW1 fill:#ffeaa7,stroke:#fdcb6e,stroke-width:2px
-    style OW1 fill:#ffeaa7,stroke:#fdcb6e,stroke-width:2px
-```
-
----
-
 ## Role Capabilities Comparison Table
 
 | Capability | Super Admin | FES Admin | FES Editor | FES Writer | Org Admin | Org Editor | Org Writer |
@@ -157,8 +66,8 @@ graph LR
 | **Write Stories - Own Categories** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Publish/Review - All Orgs** | ✅ Yes | ✅ Yes | ✅ Yes | ❌ No (Submit Only) | ❌ No | ❌ No | ❌ No (Submit Only) |
 | **Publish/Review - Own Org** | ✅ Yes | ✅ Yes | ✅ Yes | ❌ No (Submit Only) | ✅ Yes | ✅ Yes | ❌ No (Submit Only) |
-| **Delete Stories** | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **View Activity Logs** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ⚠️ Limited | ❌ No | ❌ No |
+| **Delete Stories** | ✅ Yes (All Orgs) | ✅ Yes (All Orgs) | ❌ No | ❌ No | ✅ Yes (Assigned Org(s) Only) | ❌ No | ❌ No |
+| **View Activity Logs** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 
 ---
 
@@ -191,7 +100,7 @@ graph LR
 - ✅ Can create/manage categories **across all organizations**
 - ✅ Can view, write, publish, and review stories from **all organizations**
 - ✅ Can write stories for **any organization** in **any category**
-- ❌ Cannot delete stories
+- ✅ Can delete stories from **all organizations**
 - ✅ Full access to activity logs
 
 **Use Case:** FES organization administrators who manage the platform-wide content and users but don't need the absolute control of Super Admin.
@@ -210,7 +119,7 @@ graph LR
 - ✅ Can write stories for **any organization** in **any category**
 - ✅ Can publish and review stories from **all organizations**
 - ❌ Cannot delete stories
-- ❌ No access to activity logs
+- ✅ Can view activity logs
 
 **Use Case:** FES content editors who review and publish stories across all organizations but don't need administrative privileges.
 
@@ -227,28 +136,28 @@ graph LR
 - ✅ Can submit stories for review (cannot publish directly)
 - ❌ Cannot publish/approve stories
 - ❌ Cannot delete stories
-- ❌ No access to activity logs
+- ✅ Can view activity logs
 
 **Use Case:** FES content writers who create stories for any organization but need editorial approval.
 
 ---
 
 ### 👔 Organization Admin
-**Organization:** Any organization (except FES)
+**Organization:** Any organization (except FES). **Can have access to multiple organizations if granted by Super Admin or FES Admin.**
 
 **Capabilities:**
-- ✅ Can manage users (Editors & Writers) in **own organization only**
-- ✅ Can create/manage categories for **own organization**
-- ✅ Can view stories from **own organization**
-- ✅ Can write stories for **own organization** in **own categories**
-- ✅ Can publish and review stories from **own organization**
-- ❌ Cannot manage users from other organizations
-- ❌ Cannot create categories for other organizations
-- ❌ Cannot write/publish stories for other organizations
-- ❌ Cannot delete stories
-- ⚠️ Limited access to activity logs (own org only)
+- ✅ Can manage users (Editors & Writers) in **assigned organization(s) only**
+- ✅ Can create/manage categories for **assigned organization(s)**
+- ✅ Can view stories from **assigned organization(s)**
+- ✅ Can write stories for **assigned organization(s)** in **available categories**
+- ✅ Can publish and review stories from **assigned organization(s)**
+- ✅ Can delete stories from **assigned organization(s)**
+- ❌ Cannot manage users from organizations they don't have access to
+- ❌ Cannot create categories for organizations they don't have access to
+- ❌ Cannot write/publish stories for organizations they don't have access to
+- ✅ Can view activity logs
 
-**Use Case:** Organization administrators who manage their organization's content and users independently.
+**Use Case:** Organization administrators who manage their organization's content and users. Can be granted access to multiple organizations by Super Admin or FES Admin for cross-organization management.
 
 ---
 
@@ -263,7 +172,7 @@ graph LR
 - ✅ Can publish and review stories from **own organization**
 - ❌ Cannot write/publish stories for other organizations
 - ❌ Cannot delete stories
-- ❌ No access to activity logs
+- ✅ Can view activity logs
 
 **Use Case:** Organization content editors who review and publish stories within their organization.
 
@@ -280,7 +189,7 @@ graph LR
 - ✅ Can submit stories for review (cannot publish directly)
 - ❌ Cannot publish/approve stories
 - ❌ Cannot delete stories
-- ❌ No access to activity logs
+- ✅ Can view activity logs
 
 **Use Case:** Organization content writers who create stories within their organization but need editorial approval.
 
@@ -297,11 +206,11 @@ graph LR
 | FES Writer | None | None | Own Only | All Orgs | Submit Only |
 
 ### 🏢 Other Organization Roles
-| Role | User Management | Category Management | Story Access | Story Creation | Story Publishing |
-|------|----------------|-------------------|--------------|----------------|------------------|
-| Org Admin | Own Org Only | Own Org Only | Own Org | Own Org | Own Org |
-| Org Editor | None | None (Use Only) | Own Org | Own Org | Own Org |
-| Org Writer | None | None | Own Only | Own Org | Submit Only |
+| Role | User Management | Category Management | Story Access | Story Creation | Story Publishing | Story Deletion |
+|------|----------------|-------------------|--------------|----------------|------------------|----------------|
+| Org Admin | Assigned Org(s) Only | Assigned Org(s) Only | Assigned Org(s) | Assigned Org(s) | Assigned Org(s) | Assigned Org(s) Only |
+| Org Editor | None | None (Use Only) | Own Org | Own Org | Own Org | None |
+| Org Writer | None | None | Own Only | Own Org | Submit Only | None |
 
 ---
 
@@ -309,7 +218,7 @@ graph LR
 
 | Aspect | FES Organization | Other Organizations |
 |--------|------------------|---------------------|
-| **User Management** | Super Admin can manage **all users including FES Admin**<br/>FES Admin can manage users in **all organizations** (but not Super Admin) | Org Admin can manage users in **own organization only** |
+| **User Management** | Super Admin can manage **all users including FES Admin**<br/>FES Admin can manage users in **all organizations** (but not Super Admin) | Org Admin can manage users in **assigned organization(s)** (can have access to multiple orgs if granted by Super Admin or FES Admin) |
 | **Category Management** | FES Admin can create/manage categories for **all organizations** | Org Admin can create/manage categories for **own organization only** |
 | **Story Access** | FES Editor can view/publish stories from **all organizations** | Org Editor can view/publish stories from **own organization only** |
 | **Story Creation** | FES Writer can write stories for **any organization** | Org Writer can write stories for **own organization only** |
@@ -356,15 +265,41 @@ graph LR
 |------|------|---------------------|---------|
 | Super Admin | Super Admin | All organizations | Can create/edit/delete users in FES (including FES Admin), Org A, and Org B. **Only role that can manage FES Admin.** |
 | FES Admin | FES Admin | All organizations | Can create/edit Org A Editor, Org B Writer, FES Editor, FES Writer in all organizations. **Cannot manage Super Admin.** |
-| Org A Admin | Org Admin | Org A only | Can create/edit Org A Editor and Org A Writer |
-| Org A Admin | Org Admin | ❌ Cannot manage | Cannot create/edit Org B users or FES users |
-| Org B Admin | Org Admin | Org B only | Can create/edit Org B Editor and Org B Writer |
+| Org A Admin | Org Admin | Org A (or assigned orgs) | Can create/edit Org A Editor and Org A Writer. If granted access to Org B by Super Admin or FES Admin, can also manage Org B users. |
+| Org A Admin | Org Admin | ❌ Cannot manage | Cannot create/edit users in organizations they don't have access to (unless granted by Super Admin or FES Admin) |
+| Org B Admin | Org Admin | Org B (or assigned orgs) | Can create/edit Org B Editor and Org B Writer. If granted access to Org A by Super Admin or FES Admin, can also manage Org A users. |
 
 **Example Workflow:**
-1. Super Admin creates Org A Admin user
+1. Super Admin creates Org A Admin user (assigned to Org A)
 2. Org A Admin creates Org A Editor and Org A Writer users
 3. FES Admin can also create Org A Editor users (if needed)
-4. Org A Admin cannot create Org B users or FES users
+4. Super Admin or FES Admin can grant Org A Admin access to Org B
+5. Org A Admin (with multi-org access) can now manage Org B Editor and Org B Writer users
+6. Org A Admin without multi-org access cannot create Org B users or FES users
+
+---
+
+### Example 2.5: Multi-Organization Access for Org Admins
+
+**Scenario:** Super Admin or FES Admin granting Org Admin access to multiple organizations
+
+| User | Role | Initial Access | After Grant | Can Now Manage |
+|------|------|----------------|-------------|----------------|
+| Org A Admin | Org Admin | Org A only | Org A + Org B | Users, categories, stories in both Org A and Org B |
+| Org B Admin | Org Admin | Org B only | Org B + Org A | Users, categories, stories in both Org B and Org A |
+
+**Example Workflow:**
+1. **Super Admin** creates Org A Admin user (assigned to Org A only)
+2. **Org A Admin** can manage users, categories, and stories in Org A
+3. **Super Admin** grants Org A Admin access to Org B
+4. **Org A Admin** can now:
+   - ✅ Manage Org B Editor and Org B Writer users
+   - ✅ Create categories for Org B
+   - ✅ View, publish, and delete stories from Org B
+   - ✅ Write stories for Org B
+5. **FES Admin** can also grant multi-org access to Org Admins
+
+**Use Case:** Useful when organizations collaborate closely or when an experienced admin needs to manage multiple related organizations.
 
 ---
 
@@ -414,18 +349,18 @@ graph LR
 
 **Scenario:** Story visibility and management
 
-| User | Role | Can View Stories From | Can Publish Stories From |
-|------|------|----------------------|-------------------------|
-| Super Admin | Super Admin | All (FES, Org A, Org B) | All (FES, Org A, Org B) |
-| FES Admin | FES Admin | All (FES, Org A, Org B) | All (FES, Org A, Org B) |
-| FES Editor | FES Editor | All (FES, Org A, Org B) | All (FES, Org A, Org B) |
-| FES Writer | FES Writer | Own stories only | ❌ Submit only (no publishing) |
-| Org A Admin | Org Admin | Org A only | Org A only |
-| Org A Editor | Org Editor | Org A only | Org A only |
-| Org A Writer | Org Writer | Own stories only | ❌ Submit only (no publishing) |
-| Org B Admin | Org Admin | Org B only | Org B only |
-| Org B Editor | Org Editor | Org B only | Org B only |
-| Org B Writer | Org Writer | Own stories only | ❌ Submit only (no publishing) |
+| User | Role | Can View Stories From | Can Publish Stories From | Can Delete Stories From |
+|------|------|----------------------|-------------------------|------------------------|
+| Super Admin | Super Admin | All (FES, Org A, Org B) | All (FES, Org A, Org B) | All (FES, Org A, Org B) |
+| FES Admin | FES Admin | All (FES, Org A, Org B) | All (FES, Org A, Org B) | All (FES, Org A, Org B) |
+| FES Editor | FES Editor | All (FES, Org A, Org B) | All (FES, Org A, Org B) | ❌ No |
+| FES Writer | FES Writer | Own stories only | ❌ Submit only (no publishing) | ❌ No |
+| Org A Admin | Org Admin | Org A (or assigned orgs) | Org A (or assigned orgs) | Org A (or assigned orgs) |
+| Org A Editor | Org Editor | Org A only | Org A only | ❌ No |
+| Org A Writer | Org Writer | Own stories only | ❌ Submit only (no publishing) | ❌ No |
+| Org B Admin | Org Admin | Org B (or assigned orgs) | Org B (or assigned orgs) | Org B (or assigned orgs) |
+| Org B Editor | Org Editor | Org B only | Org B only | ❌ No |
+| Org B Writer | Org Writer | Own stories only | ❌ Submit only (no publishing) | ❌ No |
 
 **Real-World Example:**
 1. **Org A Writer** writes a story about "Water Conservation in Maharashtra"
@@ -435,6 +370,9 @@ graph LR
 2. **Org A Editor** can see and publish this story
 3. **FES Editor** can also see and publish this story (cross-org access)
 4. **Org B Editor** cannot see this story (different organization)
+5. **FES Admin** can delete this story (can delete from all orgs)
+6. **Org A Admin** can delete this story (can delete from own org)
+7. **Org B Admin** cannot delete this story (different organization, unless granted access to Org A)
 
 ---
 
@@ -512,7 +450,11 @@ Org B Admin creates "Org B Specific Category"
 3. **Published Story Visibility:**
    - ✅ Visible to Org B Editor, Org B Admin (story is in their org)
    - ✅ Visible to FES Editor, FES Admin, Super Admin
-   - ❌ Not visible to Org A Editor (different organization)
+   - ❌ Not visible to Org A Editor (different organization, unless Org A Admin has multi-org access to Org B)
+4. **Story Deletion:**
+   - ✅ FES Admin can delete this story (can delete from all orgs)
+   - ✅ Org B Admin can delete this story (can delete from own org)
+   - ✅ Org A Admin can delete this story (if granted access to Org B)
 
 ---
 
@@ -528,13 +470,13 @@ graph TB
     end
 
     subgraph OrgA["🏢 Org A"]
-        AA[Org A Admin<br/>🔵 Org A Only]
+        AA[Org A Admin<br/>🔵 Org A (or Multi-Org)]
         AE[Org A Editor<br/>🔵 Org A Only]
         AW[Org A Writer<br/>🔵 Org A Only]
     end
 
     subgraph OrgB["🏢 Org B"]
-        BA[Org B Admin<br/>🟣 Org B Only]
+        BA[Org B Admin<br/>🟣 Org B (or Multi-Org)]
         BE[Org B Editor<br/>🟣 Org B Only]
         BW[Org B Writer<br/>🟣 Org B Only]
     end
@@ -592,9 +534,9 @@ graph TB
 
 **Legend:**
 - 🔴 Red = Super Admin (highest authority)
-- 🟢 Teal = FES Admin (cross-organization access)
-- 🔵 Blue = Org A roles (Org A scope only)
-- 🟣 Purple = Org B roles (Org B scope only)
+- 🟢 Teal = FES Admin (cross-organization access, can delete stories)
+- 🔵 Blue = Org A roles (Org A scope, Admin can have multi-org access)
+- 🟣 Purple = Org B roles (Org B scope, Admin can have multi-org access)
 - Solid lines = Management relationships
 - Dashed lines = Story access/permissions
 
@@ -624,7 +566,7 @@ graph TB
 **Answer:** ❌ No. Org A Writer can only use categories created by Super Admin, FES Admin, or Org A Admin.
 
 ### Scenario: Can Org A Admin manage Org B users?
-**Answer:** ❌ No. Org A Admin can only manage users (Editors & Writers) in Org A.
+**Answer:** ✅ Yes, if granted access to Org B by Super Admin or FES Admin. Otherwise, ❌ No - Org A Admin can only manage users (Editors & Writers) in their assigned organization(s).
 
 ### Scenario: Can FES Admin manage Org A users?
 **Answer:** ✅ Yes. FES Admin can manage users in all organizations including Org A (but cannot manage Super Admin).
@@ -642,7 +584,7 @@ graph TB
 **Answer:** ✅ Yes. Super Admin can create users with any role in any organization.
 
 ### Scenario: Can Org A Admin create an Org B Writer user?
-**Answer:** ❌ No. Org A Admin can only create users (Editors & Writers) within Org A.
+**Answer:** ✅ Yes, if Super Admin or FES Admin has granted Org A Admin access to Org B. Otherwise, ❌ No - Org A Admin can only create users (Editors & Writers) within their assigned organization(s).
 
 ---
 
@@ -652,15 +594,28 @@ graph TB
 - ⚠️ **Categories:** Organization Editors and Writers can only use categories that are:
   - Created by their Organization Admin, OR
   - Created by Super Admin or FES Admin (available to all organizations)
-- ⚠️ **Story Deletion:** Only Super Admin can delete stories from the system.
+- ⚠️ **Story Deletion:** 
+  - **Super Admin** can delete stories from all organizations
+  - **FES Admin** can delete stories from all organizations
+  - **Org Admin** can delete stories from their assigned organization(s) only
+  - **Editors and Writers** cannot delete stories
 - ⚠️ **User Role Assignment:** 
   - **Super Admin** can assign any role to any organization (including FES Admin role). Only Super Admin can create/manage FES Admin users.
   - **FES Admin** can assign any role to any organization (except Super Admin role). FES Admin cannot create/manage Super Admin users.
-  - **Organization Admins** can only assign Editor or Writer roles within their organization.
+  - **Organization Admins** can only assign Editor or Writer roles within their assigned organization(s). Super Admin or FES Admin can grant Org Admins access to multiple organizations.
+- ⚠️ **Activity Logs:** All users can view activity logs to track system activities and changes.
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 2.0  
 **Last Updated:** December 2025  
 **Prepared for:** FES Stories Platform - Client Approval
+
+## Version 2.0 Changes
+
+- ✅ **FES Admin** can now delete stories from all organizations
+- ✅ **Org Admin** can now delete stories from their assigned organization(s)
+- ✅ **Activity Logs** are now accessible to all users
+- ✅ **Org Admin** can have access to multiple organizations (if granted by Super Admin or FES Admin)
+- ❌ Removed detailed permission matrix diagram for clarity
 

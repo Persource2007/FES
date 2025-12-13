@@ -1996,3 +1996,204 @@ When making changes to the project:
 
 **Last Updated:** December 11, 2025
 
+---
+
+### December 12, 2025
+
+#### Database Schema Changes - Foreign Key Constraints
+
+**File: `backend/database/migrations/2025_12_12_142417_change_stories_user_id_foreign_key_to_set_null.php`** (NEW)
+- Created migration to change `stories.user_id` foreign key from CASCADE to SET NULL
+- Prevents automatic deletion of stories when associated users are deleted
+- Made `user_id` column nullable to support SET NULL behavior
+- Database driver detection - Handles both PostgreSQL and MySQL constraint naming differences
+- PostgreSQL-specific constraint discovery - Queries `pg_constraint` system table to find actual constraint names
+- Graceful error handling - Handles cases where constraints don't exist or have different names
+
+**File: `backend/database/migrations/2025_12_12_143202_change_all_cascade_foreign_keys_to_set_null.php`** (NEW)
+- Created migration to change all CASCADE foreign keys to SET NULL across the application
+- Affected tables and columns:
+  - `sessions.user_id`
+  - `role_permissions.role_id` (with permission error handling)
+  - `role_permissions.permission_id` (with permission error handling)
+  - `category_regions.category_id`
+  - `category_regions.region_id`
+  - `category_organizations.category_id`
+  - `category_organizations.organization_id`
+  - `activities.user_id` (with permission error handling)
+- Made all related columns nullable to support SET NULL behavior
+- Helper functions for database driver differences - Separate logic for PostgreSQL and MySQL
+- Permission error handling - Gracefully skips tables that require special permissions (role_permissions, activities)
+- Preserves data integrity - Stories and related records are no longer automatically deleted when parent records are removed
+
+#### Story Writing Permissions - Enabled for All Users
+
+**File: `backend/app/Http/Controllers/StoryController.php`**
+- Removed Writer-only restriction - All users can now create stories regardless of role
+- Updated `store()` method docblock - Changed from "Writer only" to "Available to all users"
+- Removed role check - Removed `if (!$userRole || $userRole->role_name !== 'Writer')` validation
+- Removed category access restriction - Removed check that prevented non-Writers from accessing categories
+- Commented out permission check - `PermissionHelper::canPostStories($user)` check is commented out
+
+**File: `backend/app/Http/Controllers/StoryCategoryController.php`**
+- Updated `getWriterCategories()` method - Super Admins can now retrieve all categories
+- Removed access denied error - Changed logic to return all active categories for Super Admins instead of 403 error
+- Commented out permission check - `PermissionHelper::canPostStories($user)` check is commented out
+
+**File: `src/pages/Stories.jsx`**
+- Enabled story submission for all users - "Submit Story" and "My Stories" tabs now visible to all authenticated users
+- Updated permission state management - Moved `canManage` and `canPost` to component-level state
+- Unified tab management - Changed from `writerTab` to `activeTab` for consistent tab handling
+- Fixed rendering logic - Removed duplicate code blocks that caused syntax errors
+- Default tab - Set default tab to 'submit-story' for all users
+
+#### Admin Role Implementation
+
+**File: `backend/database/migrations/2025_12_12_155504_create_admin_role.php`** (NEW)
+- Created Admin role migration - Adds new "Admin" role to the system
+- Role permissions assigned:
+  - `manage_users` - Can manage users
+  - `manage_story_categories` - Can manage story categories
+  - `view_stories` - Can view stories
+  - `post_stories` - Can post stories
+  - `view_activity` - Can view activity logs
+- Idempotent migration - Checks if Admin role already exists before creating
+- Includes rollback functionality - `down()` method removes Admin role and permissions
+
+#### Refresh Token Functionality Adjustment
+
+**File: `backend/app/Http/Controllers/AuthController.php`**
+- Updated `updateSessionTokens()` method - Critical security adjustment to prevent infinite access
+- Refresh token expiry preservation - `refresh_token_expires_at` is NOT updated when refreshing tokens
+- Security improvement - Refresh token expiry is set only on initial login and never extended
+- Prevents infinite access - Ensures refresh tokens truly expire after the original period
+- Token refresh behavior - New access tokens are issued but refresh token expiry remains unchanged
+- Documented in code comments - Clear explanation of why refresh token expiry is not updated
+
+**File: `REFRESH_TOKEN_FLOW.md`**
+- Comprehensive refresh token documentation - Complete guide to all refresh token scenarios
+- Hybrid approach documented - Frontend proactive + Backend reactive token refresh
+- System architecture diagram - Mermaid diagram showing refresh token flow
+- All scenarios covered - User returns next day, token expired, refresh token expired, etc.
+- Error handling documented - Comprehensive error handling flow charts
+
+#### Google Geocoding API Proposal
+
+**Documentation Created (Later Deleted):**
+- Created Google Maps Geocoding API setup documentation - Comprehensive guide for senior stakeholders
+- **Pricing for India**: Documented 70,000 free requests per month (not $200 credits as in other regions)
+- **Cost Justification**: Explained why pricing won't impact the project
+  - Customer only has 300 stories in 3 years
+  - Free tier more than sufficient for current and projected usage
+- **API Key Setup Instructions**: Step-by-step guide for generating Google Maps API key
+- **Data Output Documentation**: Explained that geocoding will fetch latitude and longitude coordinates
+- **Implementation Plan**: 
+  - Internal API key for testing phase
+  - Customer to generate their own API key during handover
+- **Proposal Format**: Written as a proposal (not an approval request) for stakeholder review
+- **Pricing Stability**: Documented that pricing can change in the future, but free tier removal would be a significant Google policy change
+
+**Purpose**: 
+- Enable precise story location plotting on map using State, District, Sub-District, Block, Panchayat, Village, and Pin-Code
+- Convert address components to latitude/longitude coordinates via Google Geocoding API
+- Store coordinates in stories table for map visualization
+
+#### Role-Based Access Control Documentation
+
+**File: `ROLE_BASED_ACCESS_CONTROL.md`** (NEW)
+- Created comprehensive RBAC documentation - Complete guide to role-based access control system
+- Mermaid diagrams included:
+  - Role hierarchy diagram showing FES vs. other organizations
+  - Permission matrix diagram with detailed role-permission relationships
+- Role descriptions:
+  - **Super Admin**: Independent, belongs to FES, controls everything
+  - **Admin (FES)**: Can manage writers/editors of all orgs, publish/review/write stories for any org, manage categories
+  - **Editor (FES)**: Can publish/review/write stories in any category and any org
+  - **Writer (FES)**: Can only write stories and post for review in any category and any org
+  - **Admin (Other Org)**: Can manage editor/writer of own org, manage categories for own org
+  - **Editor (Other Org)**: Can publish/review/write stories of own org in own categories
+  - **Writer (Other Org)**: Can write stories of own org in own categories
+- Permission matrix - Detailed table showing all permissions for each role
+- Access scope summaries - Clear explanation of FES vs. other organization scopes
+- Practical examples - Includes examples with "Org A" and "Org B" demonstrating access patterns
+- Quick reference section - Common scenarios and access patterns
+- Key distinction documented - Super Admin can manage FES Admin, but FES Admin cannot manage Super Admin
+
+#### Issues Resolved
+
+**Database Schema:**
+- ✅ Foreign key constraint errors - Fixed PostgreSQL constraint naming issues by querying system tables
+- ✅ Data preservation - Stories and related records no longer deleted when users are removed
+- ✅ Permission errors - Added graceful error handling for tables requiring special permissions
+- ✅ Column nullability - All foreign key columns made nullable to support SET NULL behavior
+
+**Story Writing:**
+- ✅ Writer-only restriction removed - All users can now create stories regardless of role
+- ✅ Category access for Super Admins - Fixed "Access Denied" error when Super Admins tried to view categories
+- ✅ Frontend rendering - Fixed duplicate code blocks and syntax errors in Stories.jsx
+- ✅ Tab visibility - Story submission tabs now visible to all authenticated users
+
+**Refresh Token Security:**
+- ✅ Refresh token expiry preservation - Fixed security issue where refresh tokens could potentially provide infinite access
+- ✅ Token refresh behavior - Refresh tokens now maintain original expiry date regardless of how many times they're used
+- ✅ Security documentation - Comprehensive refresh token flow documentation created
+
+**Google Geocoding API:**
+- ✅ Proposal documentation created - Complete setup guide and pricing analysis for India market
+- ✅ Cost justification provided - Documented why free tier is sufficient for customer usage
+- ✅ Implementation plan outlined - Testing phase with internal key, customer key during handover
+
+**Role Management:**
+- ✅ Admin role creation - Successfully added new Admin role with appropriate permissions
+- ✅ RBAC documentation - Created comprehensive documentation for client approval
+
+**Git Operations:**
+- ✅ Changes pushed to persource/main - All migrations and documentation committed and pushed
+- ✅ Documentation tracking - ROLE_BASED_ACCESS_CONTROL.md force-added to repository (was ignored by .gitignore)
+
+**Last Updated:** December 12, 2025
+
+---
+
+### December 13, 2025
+
+#### Role-Based Access Control Updates
+
+**File: `ROLE_BASED_ACCESS_CONTROL.md`**
+- Updated FES Admin permissions - FES Admin can now delete stories from all organizations
+- Updated Org Admin permissions - Org Admin can now delete stories from their assigned organization(s) only
+- Updated Activity Log access - All users can now view activity logs (previously limited to Super Admin, FES Admin, and limited for Org Admin)
+- Added multi-organization access for Org Admin - Org Admins can have access to multiple organizations if granted by Super Admin or FES Admin
+- Removed detailed permission matrix diagram - Simplified documentation by removing complex diagram
+- Updated all diagrams - Role hierarchy and visual comparison diagrams updated with new permissions
+- Updated all examples - All practical examples updated to reflect new deletion permissions and activity log access
+- Updated quick reference scenarios - All common scenarios updated with new permission information
+- Document version updated to 2.0 - Added changelog section documenting all changes
+
+#### Map Component User Experience Improvements
+
+**File: `src/components/IndiaMap.jsx`**
+- Removed story detail modal - Eliminated intermediate modal popup step
+- Updated `handleStoryClick()` - Now navigates directly to story detail page instead of showing modal
+- Removed modal-related code - Cleaned up `selectedStory` state, modal UI, and `truncateContent` helper
+- Removed unused imports - Cleaned up `FaTimes` import
+
+**File: `src/components/IndiaMapSVG.jsx`**
+- Kept tooltip functionality - Tooltip popup still appears when clicking map markers
+- Direct navigation on "Read more" - Clicking "Read more" in tooltip now navigates directly to story detail page (removed modal step)
+- Improved user experience - Users now only need to click once on "Read more" instead of twice
+
+#### Issues Resolved
+
+**User Experience:**
+- ✅ Removed double-click requirement - Users no longer need to click "Read more" twice (tooltip → modal → story detail)
+- ✅ Streamlined navigation - Single click on "Read more" in tooltip now navigates directly to story detail page
+- ✅ Kept tooltip preview - Tooltip still provides story preview before navigation
+
+**Documentation:**
+- ✅ RBAC permissions updated - All role permissions accurately reflect current system capabilities
+- ✅ Multi-org access documented - Org Admin multi-organization access capability properly documented
+- ✅ Activity log access clarified - All users can view activity logs as per system requirements
+
+**Last Updated:** December 13, 2025
+
