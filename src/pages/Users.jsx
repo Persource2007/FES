@@ -13,7 +13,7 @@ import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
-import { canManageUsers } from '../utils/permissions'
+// Removed permission imports - all authenticated users have access
 import { formatDateSimple } from '../utils/dateFormat'
 
 function Users() {
@@ -64,22 +64,7 @@ function Users() {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
 
-      // Debug: Log user permissions
-      console.log('User object:', parsedUser)
-      console.log('User permissions:', parsedUser.permissions)
-      console.log('Can manage users?', canManageUsers(parsedUser))
-
-      // Check if user can manage users
-      if (!canManageUsers(parsedUser)) {
-        // Check if permissions array exists
-        if (!parsedUser.permissions || !Array.isArray(parsedUser.permissions)) {
-          toast.error('Permissions not loaded. Please log out and log back in, or run the permissions SQL script.')
-        } else {
-          toast.error('Access denied. You do not have permission to manage users.')
-        }
-        navigate('/dashboard')
-        return
-      }
+      // All authenticated users can access - no permission checks
     } catch (e) {
       console.error('Error parsing user data:', e)
       navigate('/')
@@ -88,7 +73,7 @@ function Users() {
 
   // Fetch data on mount
   useEffect(() => {
-    if (canManageUsers(user)) {
+    if (user) {
       console.log('Fetching users and roles...')
       fetchUsers().catch((err) => {
         console.error('Error fetching users:', err)
@@ -162,9 +147,19 @@ function Users() {
   }
 
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
   }
 
   const handleDeleteUser = async () => {

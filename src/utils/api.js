@@ -39,7 +39,13 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     // Update token expiry from response if available
-    updateTokenExpiryFromResponse(response)
+    // Wrap in try-catch to prevent token refresh errors from breaking API calls
+    try {
+      updateTokenExpiryFromResponse(response)
+    } catch (error) {
+      // Silently handle errors - token expiry update should never break API calls
+      console.debug('[API] Error updating token expiry from response:', error)
+    }
     return response
   },
   (error) => {

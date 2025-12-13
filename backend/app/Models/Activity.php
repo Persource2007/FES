@@ -28,6 +28,7 @@ class Activity extends Model
         'type',
         'message',
         'metadata',
+        'created_at', // Allow manual setting since timestamps are disabled
     ];
 
     /**

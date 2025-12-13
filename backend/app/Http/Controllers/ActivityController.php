@@ -52,7 +52,7 @@ class ActivityController extends Controller
                         'type' => $activity->type,
                         'message' => $activity->message,
                         'metadata' => $activity->metadata ?? [],
-                        'timestamp' => $activity->created_at->toISOString(),
+                        'timestamp' => $activity->created_at ? $activity->created_at->toISOString() : null,
                     ];
                 });
 
@@ -98,11 +98,13 @@ class ActivityController extends Controller
             }
 
             // Create activity
+            // Note: Activity model has timestamps disabled, so we manually set created_at
             $activity = Activity::create([
                 'user_id' => $request->user_id,
                 'type' => $request->type,
                 'message' => $request->message,
                 'metadata' => $request->metadata ?? [],
+                'created_at' => \Carbon\Carbon::now(),
             ]);
 
             return $this->successResponse([
@@ -112,7 +114,7 @@ class ActivityController extends Controller
                     'type' => $activity->type,
                     'message' => $activity->message,
                     'metadata' => $activity->metadata,
-                    'timestamp' => $activity->created_at->toISOString(),
+                    'timestamp' => $activity->created_at ? $activity->created_at->toISOString() : null,
                 ],
             ], 201);
         } catch (\Exception $e) {

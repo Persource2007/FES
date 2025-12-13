@@ -34,6 +34,7 @@ export const API_ENDPOINTS = {
   // Organization endpoints
   ORGANIZATIONS: {
     LIST: '/api/organizations',
+    GET: (id) => `/api/organizations/${id}`,
     CREATE: '/api/organizations',
     UPDATE: (id) => `/api/organizations/${id}`,
     TOGGLE_STATUS: (id) => `/api/organizations/${id}/toggle-status`,

@@ -44,6 +44,24 @@ function Header() {
     try {
       setIsProcessing(true)
       
+      // First, check if there's an existing valid session
+      // This handles cases where user has expired token but refresh token is still valid
+      try {
+        const loggedIn = await isOAuthLoggedIn()
+        if (loggedIn) {
+          // Session is valid (or was successfully refreshed)
+          const user = getOAuthUser() || await getUserInfo()
+          setOAuthUser(user)
+          setIsOAuthAuthenticated(true)
+          setIsProcessing(false)
+          return // Already logged in, no need to go through OAuth flow
+        }
+      } catch (error) {
+        // Session check failed - will proceed to OAuth login
+        console.log('No valid session found, proceeding to OAuth login')
+      }
+      
+      // No valid session found - proceed with OAuth login
       // Clear any existing user data before starting a new login
       localStorage.removeItem('oauth_user')
       
@@ -297,6 +315,16 @@ function Header() {
               }`}
             >
               Stories
+            </Link>
+            <Link
+              to="/leaflet-map"
+              className={`font-medium transition-colors ${
+                isActive('/leaflet-map')
+                  ? 'text-green-800 font-semibold border-b-2 border-green-700'
+                  : 'text-gray-700 hover:text-green-700'
+              }`}
+            >
+              Try Leaflet Map
             </Link>
             
             {/* Custom Language Selector */}

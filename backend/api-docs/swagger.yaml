@@ -416,7 +416,6 @@ paths:
             example:
               name: "Jane Doe"
               email: "jane@example.com"
-              password: "password123"
               role_id: 2
               organization_id: 1
       responses:
@@ -2428,7 +2427,6 @@ components:
       required:
         - name
         - email
-        - password
         - role_id
         - organization_id
       properties:
@@ -2443,12 +2441,6 @@ components:
           maxLength: 255
           description: User email address (must be unique)
           example: "jane@example.com"
-        password:
-          type: string
-          minLength: 1
-          description: User password
-          example: "password123"
-          writeOnly: true
         role_id:
           type: integer
           format: int64
@@ -2599,8 +2591,6 @@ components:
           example:
             email:
               - "The email must be a valid email address."
-            password:
-              - "The password field is required."
 
     StoryCategory:
       type: object

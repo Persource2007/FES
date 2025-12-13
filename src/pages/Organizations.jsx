@@ -12,7 +12,7 @@ import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
-import { canManageUsers } from '../utils/permissions'
+// Removed permission imports - all authenticated users have access
 import { formatDateSimple } from '../utils/dateFormat'
 
 function Organizations() {
@@ -55,16 +55,7 @@ function Organizations() {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
 
-      // Check if user can manage users (super admin)
-      if (!canManageUsers(parsedUser)) {
-        if (!parsedUser.permissions || !Array.isArray(parsedUser.permissions)) {
-          toast.error('Permissions not loaded. Please log out and log back in, or run the permissions SQL script.')
-        } else {
-          toast.error('Access denied. You do not have permission to manage organizations.')
-        }
-        navigate('/dashboard')
-        return
-      }
+      // All authenticated users can access - no permission checks
       } catch (e) {
         console.error('Error parsing user data:', e)
         navigate('/')
@@ -73,7 +64,7 @@ function Organizations() {
 
   // Fetch data on mount
   useEffect(() => {
-    if (canManageUsers(user)) {
+    if (user) {
       fetchOrganizations().catch((err) => {
         console.error('Error fetching organizations:', err)
         console.error('Error response:', err.response)
@@ -160,9 +151,19 @@ function Organizations() {
   }
 
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
   }
 
   const handleDeleteOrganization = async () => {

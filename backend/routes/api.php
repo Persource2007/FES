@@ -31,6 +31,7 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     // Organization management routes (for super admin) - Protected
     $router->group(['prefix' => 'organizations', 'middleware' => 'auth.session'], function () use ($router) {
         $router->get('/', 'OrganizationController@index');
+        $router->get('/{id}', 'OrganizationController@show');
         $router->post('/', 'OrganizationController@store');
         $router->put('/{id}', 'OrganizationController@update');
         $router->patch('/{id}/toggle-status', 'OrganizationController@toggleStatus');

@@ -228,8 +228,29 @@ class AuthController extends Controller
                 );
             }
             
-            // 5. Create local session (store in database)
-            $sessionId = $this->createUserSession($user, $tokenResponse);
+            // 5. Check for existing session for this user, update if exists, otherwise create new
+            // Use the most recent session (by updated_at) to handle multiple devices
+            $existingSession = DB::table('sessions')
+                ->where('user_id', $user->id)
+                ->orderBy('updated_at', 'desc')
+                ->first();
+            
+            if ($existingSession) {
+                // Update existing session with new tokens
+                Log::info('Updating existing session for user', [
+                    'user_id' => $user->id,
+                    'session_id' => $existingSession->id,
+                ]);
+                
+                $sessionId = $this->updateUserSession($existingSession->id, $user, $tokenResponse);
+            } else {
+                // Create new session
+                Log::info('Creating new session for user', [
+                    'user_id' => $user->id,
+                ]);
+                
+                $sessionId = $this->createUserSession($user, $tokenResponse);
+            }
             
             // 6. Get user role
             $role = null;
@@ -416,6 +437,7 @@ class AuthController extends Controller
         $expiresAt = \Carbon\Carbon::now()->addSeconds($expiresIn);
         
         // Store in database
+        // Note: We don't store refresh_token_expires_at - OAuth server validates refresh token validity
         DB::table('sessions')->insert([
             'id' => $sessionId,
             'user_id' => $user->id,
@@ -425,6 +447,46 @@ class AuthController extends Controller
             'created_at' => \Carbon\Carbon::now(),
             'updated_at' => \Carbon\Carbon::now(),
         ]);
+        
+        return $sessionId;
+    }
+
+    /**
+     * Update existing user session with new tokens
+     * 
+     * @param string $sessionId Existing session ID
+     * @param User $user User model
+     * @param array $tokenResponse Token response from OAuth server
+     * @return string Session ID (same as input)
+     */
+    private function updateUserSession(string $sessionId, User $user, array $tokenResponse): string
+    {
+        // Encrypt tokens before storing
+        $encryptedAccessToken = encrypt($tokenResponse['access_token']);
+        $encryptedRefreshToken = isset($tokenResponse['refresh_token']) 
+            ? encrypt($tokenResponse['refresh_token']) 
+            : null;
+        
+        // Calculate expiration (default to 15 minutes if not provided)
+        $expiresIn = $tokenResponse['expires_in'] ?? 900;
+        $expiresAt = \Carbon\Carbon::now()->addSeconds($expiresIn);
+        
+        // Update existing session
+        // Note: We don't store refresh_token_expires_at - OAuth server validates refresh token validity
+        $updateData = [
+            'oauth_access_token' => $encryptedAccessToken,
+            'expires_at' => $expiresAt,
+            'updated_at' => \Carbon\Carbon::now(),
+        ];
+        
+        // Only update refresh token if a new one was provided
+        if ($encryptedRefreshToken) {
+            $updateData['oauth_refresh_token'] = $encryptedRefreshToken;
+        }
+        
+        DB::table('sessions')
+            ->where('id', $sessionId)
+            ->update($updateData);
         
         return $sessionId;
     }
@@ -505,7 +567,8 @@ class AuthController extends Controller
         }
         
         // Return token expiry information so frontend knows when token expires
-        return $this->successResponse([
+        // Only include token info if expires_at is valid
+        $responseData = [
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -516,11 +579,17 @@ class AuthController extends Controller
                 'organization_name' => $organizationName,
                 'permissions' => $permissions,
             ],
-            'token' => [
+        ];
+        
+        // Only add token info if expires_at is not null
+        if ($session->expires_at) {
+            $responseData['token'] = [
                 'expires_at' => $session->expires_at->format('Y-m-d H:i:s'),
                 'expires_in' => max(0, \Carbon\Carbon::now()->diffInSeconds($session->expires_at)),
-            ],
-        ]);
+            ];
+        }
+        
+        return $this->successResponse($responseData);
     }
 
     /**
@@ -570,6 +639,11 @@ class AuthController extends Controller
     /**
      * Update session with new tokens after refresh
      * 
+     * IMPORTANT: We do NOT update refresh_token_expires_at when refreshing.
+     * The refresh token expiry is set only on initial login and should never
+     * be extended. This prevents infinite access by ensuring refresh tokens
+     * truly expire after the original period.
+     * 
      * @param string $sessionId Session ID
      * @param array $tokenResponse New token response
      * @return void
@@ -594,8 +668,11 @@ class AuthController extends Controller
         ];
         
         // Only update refresh token if a new one was provided
+        // BUT: Do NOT update refresh_token_expires_at - preserve original expiry
+        // This prevents infinite access by keeping the original expiry date
         if ($encryptedRefreshToken) {
             $updateData['oauth_refresh_token'] = $encryptedRefreshToken;
+            // refresh_token_expires_at is NOT updated - it remains at original expiry
         }
         
         DB::table('sessions')

@@ -448,19 +448,36 @@ class StoryCategoryController extends Controller
                 return $this->errorResponse('User not found', 404);
             }
 
-            // Check if user is super admin - super admins don't need category access restrictions
+            // Check if user is super admin - super admins have access to all categories
             $superAdminRoleId = DB::table('roles')
                 ->where('role_name', 'Super admin')
                 ->value('id');
 
             if ($user->role_id == $superAdminRoleId) {
-                return $this->errorResponse('Super admins have access to all categories', 403);
+                // Super admins get all active categories
+                $categories = DB::table('story_categories')
+                    ->where('story_categories.is_active', true)
+                    ->select(
+                        'story_categories.id',
+                        'story_categories.name',
+                        'story_categories.description',
+                        'story_categories.is_active',
+                        'story_categories.created_at',
+                        'story_categories.updated_at'
+                    )
+                    ->orderBy('story_categories.name', 'asc')
+                    ->get();
+
+                return $this->successResponse([
+                    'categories' => $categories,
+                ]);
             }
 
+            // Note: All authenticated users can now post stories (permission check removed temporarily)
             // Check if user has permission to post stories
-            if (!PermissionHelper::canPostStories($user)) {
-                return $this->errorResponse('User does not have permission to post stories', 403);
-            }
+            // if (!PermissionHelper::canPostStories($user)) {
+            //     return $this->errorResponse('User does not have permission to post stories', 403);
+            // }
 
             // Get categories accessible by this writer
             // Writers can ONLY access categories explicitly assigned to their organization

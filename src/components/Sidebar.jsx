@@ -19,13 +19,7 @@ import {
   FaCode,
   FaExternalLinkAlt,
 } from 'react-icons/fa'
-import {
-  canManageUsers,
-  canManageStoryCategories,
-  canPostStories,
-  canViewStories,
-  canViewActivity,
-} from '../utils/permissions'
+// Removed permission imports - all authenticated users have access
 import { useApi } from '../hooks/useApi'
 import { API_ENDPOINTS } from '../utils/constants'
 
@@ -39,14 +33,14 @@ function Sidebar({ user, onLogout }) {
   const [showTranslateDropdown, setShowTranslateDropdown] = useState(false)
   const [showLanguageInfo, setShowLanguageInfo] = useState(false)
 
-  // Fetch pending stories count for super admin
+  // Fetch pending stories count for all users
   const {
     data: pendingCountData,
     execute: fetchPendingCount,
   } = useApi(API_ENDPOINTS.STORIES.PENDING_COUNT, { immediate: false })
 
   useEffect(() => {
-    if (!user || !canManageStoryCategories(user)) {
+    if (!user) {
       return
     }
 
@@ -147,7 +141,7 @@ function Sidebar({ user, onLogout }) {
 
   const handleLogout = () => {
     onLogout()
-    navigate('/login')
+    // Redirect is handled by the onLogout handler in each page component
   }
 
   const languages = [
@@ -219,9 +213,6 @@ function Sidebar({ user, onLogout }) {
     }
   }
 
-  // If user doesn't have permissions array, show all menu items (fallback for users logged in before permissions system)
-  const hasPermissions = user?.permissions && Array.isArray(user.permissions)
-  
   const toggleSubmenu = (menuKey) => {
     setExpandedMenus((prev) => ({
       ...prev,
@@ -229,10 +220,7 @@ function Sidebar({ user, onLogout }) {
     }))
   }
 
-  // Check if Stories menu should have submenu (for super admin)
-  const canManageCategories = hasPermissions ? canManageStoryCategories(user) : true
-  const storiesHasSubmenu = canManageCategories
-
+  // All menu items visible to all authenticated users - no role-based restrictions
   const menuItems = [
     {
       name: 'Dashboard',
@@ -240,81 +228,54 @@ function Sidebar({ user, onLogout }) {
       icon: FaHome,
       visible: true,
     },
-    // Organizations menu - visible if user can manage users OR if permissions not set up yet
-    ...((hasPermissions ? canManageUsers(user) : true)
-      ? [
-          {
-            name: 'Organizations',
-            path: '/dashboard/organizations',
-            icon: FaBuilding,
-            visible: true,
-          },
-        ]
-      : []),
-    // Users menu - visible if user can manage users OR if permissions not set up yet
-    ...((hasPermissions ? canManageUsers(user) : true)
-      ? [
-          {
-            name: 'Users',
-            path: '/dashboard/users',
-            icon: FaUsers,
-            visible: true,
-          },
-        ]
-      : []),
-    // Stories menu - visible if user can manage categories or view/post stories OR if permissions not set up yet
-    ...((hasPermissions ? (canManageStoryCategories(user) || canViewStories(user) || canPostStories(user)) : true)
-      ? [
-          {
-            name: 'Stories',
-            path: '/dashboard/stories',
-            icon: FaFileAlt,
-            visible: true,
-            hasSubmenu: storiesHasSubmenu,
-            badge: canManageCategories && pendingCount > 0 ? pendingCount : null,
-            submenu: canManageCategories
-              ? [
-                  {
-                    name: 'Story Review',
-                    path: '/dashboard/stories/review',
-                    icon: FaBell,
-                    badge: pendingCount > 0 ? pendingCount : null,
-                  },
-                ]
-              : [],
-          },
-        ]
-      : []),
-    // Activity menu - visible if user can view activity OR if permissions not set up yet
-    ...((hasPermissions ? canViewActivity(user) : true)
-      ? [
-          {
-            name: 'Recent Activity',
-            path: '/dashboard/activity',
-            icon: FaHistory,
-            visible: true,
-          },
-        ]
-      : []),
-    // API menu - visible only to super admin (users who can manage users)
-    ...((hasPermissions ? canManageUsers(user) : false)
-      ? [
-          {
-            name: 'API',
-            path: '/dashboard/api',
-            icon: FaCode,
-            visible: true,
-            hasSubmenu: true,
-            submenu: [
-              {
-                name: 'Admin Hierarchy Microservice testing',
-                path: '/dashboard/api',
-                icon: FaCode,
-              },
-            ],
-          },
-        ]
-      : []),
+    {
+      name: 'Organizations',
+      path: '/dashboard/organizations',
+      icon: FaBuilding,
+      visible: true,
+    },
+    {
+      name: 'Users',
+      path: '/dashboard/users',
+      icon: FaUsers,
+      visible: true,
+    },
+    {
+      name: 'Stories',
+      path: '/dashboard/stories',
+      icon: FaFileAlt,
+      visible: true,
+      hasSubmenu: true,
+      badge: pendingCount > 0 ? pendingCount : null,
+      submenu: [
+        {
+          name: 'Story Review',
+          path: '/dashboard/stories/review',
+          icon: FaBell,
+          badge: pendingCount > 0 ? pendingCount : null,
+        },
+      ],
+    },
+    {
+      name: 'Recent Activity',
+      path: '/dashboard/activity',
+      icon: FaHistory,
+      visible: true,
+    },
+    {
+      name: 'API',
+      path: '/dashboard/api',
+      icon: FaCode,
+      visible: true,
+      hasSubmenu: true,
+      submenu: [
+        {
+          name: 'Admin Hierarchy Microservice testing',
+          path: '/dashboard/api',
+          icon: FaCode,
+        },
+      ],
+    },
   ]
 
   const toggleSidebar = () => {
@@ -407,13 +368,7 @@ function Sidebar({ user, onLogout }) {
                 <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
                 <p className="text-xs text-slate-400 truncate">{user?.email || ''}</p>
                 {user?.role && (
-                  <span
-                    className={`inline-block mt-1 px-2 py-0.5 rounded text-xs ${
-                      canManageUsers(user)
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-blue-600 text-white'
-                    }`}
-                  >
+                  <span className="inline-block mt-1 px-2 py-0.5 rounded text-xs bg-blue-600 text-white">
                     {user.role.name}
                   </span>
                 )}

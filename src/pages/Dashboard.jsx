@@ -2,11 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FaChartBar } from 'react-icons/fa'
 import Sidebar from '../components/Sidebar'
-import {
-  canManageUsers,
-  canManageStoryCategories,
-  canPostStories,
-} from '../utils/permissions'
 import { logoutOAuth } from '../utils/oauthLogin'
 
 function Dashboard() {
@@ -43,22 +38,15 @@ function Dashboard() {
   const handleLogout = async () => {
     try {
       // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
       await logoutOAuth()
     } catch (error) {
       console.error('Logout error:', error)
     } finally {
-      // Clear local state regardless of API call result
-      localStorage.removeItem('authToken')
-      localStorage.removeItem('user')
-      localStorage.removeItem('oauth_user')
-      // Redirect to home page
-      navigate('/')
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
     }
   }
-
-  const canManageUsersPermission = canManageUsers(user)
-  const canManageCategoriesPermission = canManageStoryCategories(user)
-  const canPostStoriesPermission = canPostStories(user)
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -90,11 +78,7 @@ function Dashboard() {
               </div>
             </div>
             <p className="text-gray-600">
-              {canManageUsersPermission && canManageCategoriesPermission
-                ? 'You have full administrative access to manage stories, users, and system settings.'
-                : canPostStoriesPermission
-                ? 'You can post stories to categories you have access to.'
-                : 'This is your dashboard page. You can add your content here.'}
+              This is your dashboard. You can manage stories, users, organizations, and system settings.
             </p>
           </div>
         </div>

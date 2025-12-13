@@ -24,7 +24,6 @@ class User extends Model implements AuthenticatableContract
     protected $fillable = [
         'name',
         'email',
-        'password',
         'role_id',
         'region_id',
         'organization_id',
@@ -37,7 +36,6 @@ class User extends Model implements AuthenticatableContract
      * @var array<int, string>
      */
     protected $hidden = [
-        'password',
         'remember_token',
     ];
 
@@ -48,7 +46,6 @@ class User extends Model implements AuthenticatableContract
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
-        'password' => 'hashed',
         'is_active' => 'boolean',
     ];
 

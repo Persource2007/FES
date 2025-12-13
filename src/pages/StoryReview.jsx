@@ -15,7 +15,7 @@ import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
-import { canManageStoryCategories } from '../utils/permissions'
+// Removed permission imports - all authenticated users have access
 import { formatDateTime } from '../utils/dateFormat'
 
 function StoryReview() {
@@ -57,12 +57,7 @@ function StoryReview() {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
 
-      // Check if user can manage story categories
-      if (!canManageStoryCategories(parsedUser)) {
-        toast.error('Access denied. You do not have permission to review stories.')
-        navigate('/dashboard')
-        return
-      }
+      // All authenticated users can access - no permission checks
     } catch (e) {
       console.error('Error parsing user data:', e)
       navigate('/')
@@ -71,7 +66,7 @@ function StoryReview() {
 
   // Fetch pending stories
   useEffect(() => {
-    if (user && canManageStoryCategories(user)) {
+    if (user) {
       fetchPendingStories()
       // Refresh every 10 seconds to check for new stories
       const interval = setInterval(() => {
@@ -129,9 +124,19 @@ function StoryReview() {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
   }
 
 

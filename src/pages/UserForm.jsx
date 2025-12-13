@@ -7,7 +7,8 @@ import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
-import { canManageUsers } from '../utils/permissions'
+import { logoutOAuth } from '../utils/oauthLogin'
+// Removed permission imports - all authenticated users have access
 
 function UserForm() {
   const navigate = useNavigate()
@@ -21,7 +22,6 @@ function UserForm() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    password: '',
     role_id: '',
     organization_id: '',
   })
@@ -61,11 +61,7 @@ function UserForm() {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
 
-      if (!canManageUsers(parsedUser)) {
-        toast.error('Access denied. You do not have permission to manage users.')
-        navigate('/dashboard/users')
-        return
-      }
+      // All authenticated users can access - no permission checks
 
       // Fetch required data
       fetchRoles()
@@ -91,7 +87,6 @@ function UserForm() {
         setFormData({
           name: userToEdit.name || '',
           email: userToEdit.email || '',
-          password: '',
           role_id: userToEdit.role_id || '',
           organization_id: userToEdit.organization_id || '',
         })
@@ -145,12 +140,6 @@ function UserForm() {
       return
     }
 
-    // For edit mode, password is optional
-    if (!isEditMode && !formData.password) {
-      toast.error('Password is required for new users')
-      return
-    }
-
     setSaving(true)
 
     try {
@@ -161,11 +150,6 @@ function UserForm() {
           email: formData.email,
           role_id: formData.role_id,
           organization_id: formData.organization_id,
-        }
-        
-        // Only include password if provided
-        if (formData.password) {
-          updateData.password = formData.password
         }
 
         await apiClient({
@@ -210,10 +194,25 @@ function UserForm() {
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar />
+        <Sidebar user={user} onLogout={handleLogout} />
         <main className="flex-1 p-8">
           <div className="max-w-4xl mx-auto">
             <p className="text-gray-600">Loading...</p>
@@ -225,7 +224,7 @@ function UserForm() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar />
+      <Sidebar user={user} onLogout={handleLogout} />
       <main className="flex-1 p-8">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
@@ -278,22 +277,9 @@ function UserForm() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
                     placeholder="Enter email address"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Password {isEditMode ? '(leave blank to keep current)' : '*'}
-                  </label>
-                  <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    required={!isEditMode}
-                    minLength={isEditMode ? 0 : 1}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    placeholder={isEditMode ? "Enter new password (optional)" : "Enter password"}
-                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    It should perfectly match the email address in OAuth for user access.
+                  </p>
                 </div>
 
                 <div>

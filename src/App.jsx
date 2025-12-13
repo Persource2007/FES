@@ -9,6 +9,7 @@ import Stories from './pages/Stories'
 import StoryReview from './pages/StoryReview'
 import PublicStories from './pages/PublicStories'
 import StoryDetail from './pages/StoryDetail'
+import LeafletMapPage from './pages/LeafletMapPage'
 import OAuth from './pages/OAuth'
 import OAuthCallback from './pages/OAuthCallback'
 import DashboardAPI from './pages/DashboardAPI'
@@ -27,6 +28,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/stories" element={<PublicStories />} />
         <Route path="/stories/:slug" element={<StoryDetail />} />
+        <Route path="/leaflet-map" element={<LeafletMapPage />} />
         <Route path="/oauth" element={<OAuth />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/login" element={<Login />} />
@@ -113,7 +115,7 @@ function App() {
         <Route
           path="/dashboard/api"
           element={
-            <ProtectedRoute requireSuperAdmin={true}>
+            <ProtectedRoute>
               <DashboardAPI />
             </ProtectedRoute>
           }

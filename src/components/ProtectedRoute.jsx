@@ -1,45 +1,70 @@
+import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { canManageUsers } from '../utils/permissions'
+import { isOAuthLoggedIn, getOAuthUser } from '../utils/oauthLogin'
 
 /**
  * Protected Route Component
  * 
- * Redirects to login if user is not authenticated.
- * Only allows access to dashboard and other protected routes when user is logged in.
+ * Validates session with backend and redirects to login if not authenticated.
+ * All authenticated users can access protected routes (no role-based restrictions).
  * 
  * @param {Object} props
  * @param {React.ReactNode} props.children - The component to render if authenticated
- * @param {boolean} props.requireSuperAdmin - If true, only super admin (canManageUsers) can access
  */
-function ProtectedRoute({ children, requireSuperAdmin = false }) {
-  // Check if user is logged in via OAuth (BFF pattern)
-  // OAuth users are stored in 'oauth_user', old local login users in 'user'
-  const oauthUserData = localStorage.getItem('oauth_user')
-  const oldUserData = localStorage.getItem('user')
+function ProtectedRoute({ children }) {
+  const [isValidating, setIsValidating] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
 
-  // If no user data found, redirect to home (OAuth login is handled via Header)
-  if (!oauthUserData && !oldUserData) {
+  useEffect(() => {
+    const validateSession = async () => {
+      try {
+        // Validate session with backend (checks cookie and database)
+        const loggedIn = await isOAuthLoggedIn()
+        
+        if (loggedIn) {
+          // Get user from localStorage (updated by isOAuthLoggedIn)
+          const userData = getOAuthUser()
+          setUser(userData)
+          setIsAuthenticated(true)
+        } else {
+          // Session invalid - clear localStorage
+          localStorage.removeItem('oauth_user')
+          localStorage.removeItem('user')
+          setIsAuthenticated(false)
+        }
+      } catch (error) {
+        // Session validation failed - clear state
+        console.error('Session validation failed:', error)
+        localStorage.removeItem('oauth_user')
+        localStorage.removeItem('user')
+        setIsAuthenticated(false)
+      } finally {
+        setIsValidating(false)
+      }
+    }
+
+    validateSession()
+  }, [])
+
+  // Show loading state while validating
+  if (isValidating) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-700 mx-auto mb-4"></div>
+          <p className="text-gray-600">Validating session...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If not authenticated, redirect to home
+  if (!isAuthenticated || !user) {
     return <Navigate to="/" replace />
   }
 
-  // Use OAuth user if available, otherwise fall back to old user
-  const userData = oauthUserData || oldUserData
-
-  // If super admin access is required, check permissions
-  if (requireSuperAdmin) {
-    try {
-      const user = JSON.parse(userData)
-      if (!canManageUsers(user)) {
-        // Redirect to dashboard if user doesn't have permission
-        return <Navigate to="/dashboard" replace />
-      }
-    } catch (e) {
-      // If user data is invalid, redirect to home
-      return <Navigate to="/" replace />
-    }
-  }
-
-  // If authenticated (and has required permissions if needed), render the protected component
+  // All authenticated users can access - no role-based restrictions
   return children
 }
 

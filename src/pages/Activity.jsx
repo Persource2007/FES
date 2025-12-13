@@ -55,9 +55,19 @@ function Activity() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
   }
 
   const getActivityIcon = (type) => {

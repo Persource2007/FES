@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FaCode, FaSpinner, FaCheckCircle, FaExclamationCircle, FaCopy, FaMapMarkerAlt } from 'react-icons/fa'
 import Sidebar from '../components/Sidebar'
-import { canManageUsers } from '../utils/permissions'
 import { useError } from '../contexts/ErrorContext'
 import axios from 'axios'
 
@@ -16,7 +15,7 @@ function DashboardAPI() {
   const { showError, showInfo } = useError()
   const [user, setUser] = useState(null)
 
-  // Load user data from localStorage on mount and check permissions
+  // Load user data from localStorage on mount
   // Support both OAuth (oauth_user) and old local login (user)
   useEffect(() => {
     const oauthUserData = localStorage.getItem('oauth_user')
@@ -27,12 +26,6 @@ function DashboardAPI() {
       try {
         const parsedUser = JSON.parse(userData)
         setUser(parsedUser)
-        
-        // Check if user has super admin permission (canManageUsers)
-        if (!canManageUsers(parsedUser)) {
-          // Redirect to dashboard if not super admin
-          navigate('/dashboard', { replace: true })
-        }
       } catch (e) {
         console.error('Error parsing user data:', e)
         navigate('/', { replace: true })
@@ -42,10 +35,19 @@ function DashboardAPI() {
     }
   }, [navigate])
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
-    localStorage.removeItem('oauth_user')
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
   }
 
   // Hierarchical selection state

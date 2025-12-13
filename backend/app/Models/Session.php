@@ -78,7 +78,7 @@ class Session extends Model
     }
 
     /**
-     * Check if the session is expired.
+     * Check if the session (access token) is expired.
      *
      * @return bool
      */

@@ -42,18 +42,61 @@ export const getTokenExpiry = () => {
  * @param {number} expiresIn - Seconds until expiry
  */
 export const setTokenExpiry = (expiresAt, expiresIn) => {
-  // Convert ISO string to timestamp
-  const expiresAtTimestamp = new Date(expiresAt).getTime()
-  const expiresInSeconds = Math.max(0, expiresIn)
+  // Strict input validation
+  if (!expiresAt || 
+      typeof expiresAt !== 'string' || 
+      expiresAt.trim() === '' ||
+      expiresIn === undefined || 
+      expiresIn === null || 
+      typeof expiresIn !== 'number' ||
+      isNaN(expiresIn)) {
+    console.warn('[TokenRefresh] Invalid token expiry data, skipping storage:', { expiresAt, expiresIn })
+    return
+  }
   
+  // Convert ISO string to timestamp
+  let expiresAtTimestamp
+  try {
+    const dateObj = new Date(expiresAt)
+    expiresAtTimestamp = dateObj.getTime()
+  } catch (error) {
+    console.warn('[TokenRefresh] Error parsing expiresAt date:', error, 'Value:', expiresAt)
+    return
+  }
+  
+  // Validate timestamp - must be a valid number (not NaN)
+  if (isNaN(expiresAtTimestamp) || expiresAtTimestamp <= 0) {
+    console.warn('[TokenRefresh] Invalid expiresAt date, skipping storage:', expiresAt)
+    return
+  }
+  
+  const expiresInSeconds = Math.max(0, Math.floor(expiresIn))
+  
+  // Store in localStorage
   localStorage.setItem(TOKEN_EXPIRY_KEY, expiresAtTimestamp.toString())
   localStorage.setItem(TOKEN_EXPIRY_IN_KEY, expiresInSeconds.toString())
   
-  console.log('[TokenRefresh] Stored token expiry:', {
-    expiresAt: new Date(expiresAtTimestamp).toISOString(),
-    expiresIn: expiresInSeconds,
-    expiresInMinutes: Math.floor(expiresInSeconds / 60),
-  })
+  // Safely create date object and validate before calling toISOString()
+  let expiresAtDate
+  try {
+    expiresAtDate = new Date(expiresAtTimestamp)
+    
+    // Validate the date object is valid
+    if (isNaN(expiresAtDate.getTime())) {
+      console.warn('[TokenRefresh] Created invalid date from timestamp, skipping log:', expiresAtTimestamp)
+      return
+    }
+    
+    // Final safety check before calling toISOString()
+    const isoString = expiresAtDate.toISOString()
+    console.log('[TokenRefresh] Stored token expiry:', {
+      expiresAt: isoString,
+      expiresIn: expiresInSeconds,
+      expiresInMinutes: Math.floor(expiresInSeconds / 60),
+    })
+  } catch (error) {
+    console.warn('[TokenRefresh] Error converting date to ISO string:', error, 'Timestamp:', expiresAtTimestamp)
+  }
 }
 
 /**
@@ -72,7 +115,7 @@ export const clearTokenExpiry = () => {
 export const shouldRefreshToken = () => {
   const expiry = getTokenExpiry()
   
-  if (!expiry) {
+  if (!expiry || !expiry.expiresAt || isNaN(expiry.expiresAt)) {
     return false // No expiry info, let backend handle it
   }
   
@@ -81,11 +124,14 @@ export const shouldRefreshToken = () => {
   const needsRefresh = timeUntilExpiry <= (REFRESH_THRESHOLD_SECONDS * 1000)
   
   if (needsRefresh) {
-    console.log('[TokenRefresh] Token needs refresh:', {
-      expiresAt: new Date(expiry.expiresAt).toISOString(),
-      timeUntilExpiry: Math.floor(timeUntilExpiry / 1000),
-      seconds: Math.floor(timeUntilExpiry / 1000),
-    })
+    const expiresAtDate = new Date(expiry.expiresAt)
+    if (!isNaN(expiresAtDate.getTime())) {
+      console.log('[TokenRefresh] Token needs refresh:', {
+        expiresAt: expiresAtDate.toISOString(),
+        timeUntilExpiry: Math.floor(timeUntilExpiry / 1000),
+        seconds: Math.floor(timeUntilExpiry / 1000),
+      })
+    }
   }
   
   return needsRefresh
@@ -98,7 +144,7 @@ export const shouldRefreshToken = () => {
 export const isTokenExpired = () => {
   const expiry = getTokenExpiry()
   
-  if (!expiry) {
+  if (!expiry || !expiry.expiresAt || isNaN(expiry.expiresAt)) {
     return false // No expiry info, let backend handle it
   }
   
@@ -106,10 +152,14 @@ export const isTokenExpired = () => {
   const isExpired = expiry.expiresAt <= now
   
   if (isExpired) {
-    console.log('[TokenRefresh] Token is expired:', {
-      expiresAt: new Date(expiry.expiresAt).toISOString(),
-      now: new Date(now).toISOString(),
-    })
+    const expiresAtDate = new Date(expiry.expiresAt)
+    const nowDate = new Date(now)
+    if (!isNaN(expiresAtDate.getTime()) && !isNaN(nowDate.getTime())) {
+      console.log('[TokenRefresh] Token is expired:', {
+        expiresAt: expiresAtDate.toISOString(),
+        now: nowDate.toISOString(),
+      })
+    }
   }
   
   return isExpired
@@ -209,11 +259,36 @@ export const refreshToken = async () => {
  * @param {Object} response - API response with token info
  */
 export const updateTokenExpiryFromResponse = (response) => {
-  if (response?.data?.token) {
+  // Early return if response structure is invalid
+  if (!response || !response.data) {
+    return // No response data, nothing to update
+  }
+  
+  // Only process if token object exists and has valid structure
+  if (!response.data.token || typeof response.data.token !== 'object') {
+    return // No token object or invalid structure, skip silently
+  }
+  
+  try {
     const { expires_at, expires_in } = response.data.token
-    if (expires_at && expires_in !== undefined) {
-      setTokenExpiry(expires_at, expires_in)
+    
+    // Strict validation: expires_at must be a non-empty string, expires_in must be a valid number
+    if (!expires_at || 
+        typeof expires_at !== 'string' || 
+        expires_at.trim() === '' ||
+        expires_in === undefined || 
+        expires_in === null || 
+        typeof expires_in !== 'number' ||
+        isNaN(expires_in)) {
+      // Silently skip if token data is invalid (not all responses need token info)
+      return
     }
+    
+    // Call setTokenExpiry with validated data
+    setTokenExpiry(expires_at, expires_in)
+  } catch (error) {
+    // Silently handle errors - token expiry update should not break the app
+    console.debug('[TokenRefresh] Error updating token expiry from response:', error)
   }
 }
 

@@ -2197,3 +2197,65 @@ When making changes to the project:
 
 **Last Updated:** December 13, 2025
 
+---
+
+### December 13, 2025 (Afternoon Session)
+
+#### Logout Functionality Improvements
+
+**File: `src/components/Sidebar.jsx`**
+- Removed `/login` redirect after logout - Sidebar no longer redirects to login page after logout
+- Logout redirect now handled by individual page components - Each page component handles its own redirect (usually to home)
+
+**File: `src/pages/Dashboard.jsx`**
+- Standardized logout handler - Updated to use `logoutOAuth()` and `window.location.href = '/'` for consistent behavior
+- Removed duplicate localStorage clearing - `logoutOAuth()` already handles all cleanup
+
+**File: `src/pages/Users.jsx`**
+- Standardized logout handler - Updated to match frontend logout behavior
+- Added proper session cleanup - Now calls `logoutOAuth()` to destroy server-side session
+- Added redirect to home page - Uses `window.location.href = '/'` for reliable logout redirect
+
+**File: `src/pages/Activity.jsx`**
+- Standardized logout handler - Updated to match frontend logout behavior
+- Added proper session cleanup - Now calls `logoutOAuth()` to destroy server-side session
+
+**File: `src/pages/Stories.jsx`**
+- Standardized logout handler - Updated to match frontend logout behavior
+- Added proper session cleanup - Now calls `logoutOAuth()` to destroy server-side session
+
+**File: `src/pages/DashboardAPI.jsx`**
+- Standardized logout handler - Updated to match frontend logout behavior
+- Added proper session cleanup - Now calls `logoutOAuth()` to destroy server-side session
+
+**File: `src/pages/StoryReview.jsx`**
+- Standardized logout handler - Updated to match frontend logout behavior
+- Added proper session cleanup - Now calls `logoutOAuth()` to destroy server-side session
+
+**File: `src/pages/Organizations.jsx`**
+- Standardized logout handler - Updated to match frontend logout behavior
+- Added proper session cleanup - Now calls `logoutOAuth()` to destroy server-side session
+
+#### Login Flow Improvements
+
+**File: `src/components/Header.jsx`**
+- Added session check before OAuth redirect - Login button now checks for existing session before redirecting to OAuth
+- Automatic session refresh - If session exists but access token is expired, backend attempts to refresh using refresh token
+- Improved user experience - Users with valid refresh tokens are automatically logged in without OAuth redirect
+- Only redirects to OAuth if no session exists or refresh token is also expired
+
+#### Issues Resolved
+
+**Logout Functionality:**
+- ✅ Removed unwanted `/login` redirect - Users are no longer redirected to login page after logout
+- ✅ Consistent logout behavior - All dashboard pages now use the same logout flow as frontend
+- ✅ Proper session cleanup - All logout handlers now properly destroy server-side sessions via BFF
+- ✅ Reliable redirects - All logout handlers use `window.location.href = '/'` for consistent redirect behavior
+
+**Login Flow:**
+- ✅ Session refresh on login click - Login button now checks and refreshes existing sessions before OAuth redirect
+- ✅ Automatic re-authentication - Users with expired access tokens but valid refresh tokens are automatically logged in
+- ✅ Better user experience - No unnecessary OAuth redirects when session can be refreshed
+
+**Last Updated:** December 13, 2025
+

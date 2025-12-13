@@ -7,7 +7,7 @@ import { API_ENDPOINTS } from '../utils/constants'
 import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import { addActivity } from '../utils/activity'
-import { canManageUsers } from '../utils/permissions'
+// Removed permission imports - all authenticated users have access
 
 function OrganizationForm() {
   const navigate = useNavigate()
@@ -22,6 +22,7 @@ function OrganizationForm() {
     name: '',
     region_id: '',
   })
+  const [formDataInitialized, setFormDataInitialized] = useState(false)
 
   // Fetch regions
   const {
@@ -30,18 +31,15 @@ function OrganizationForm() {
     execute: fetchRegions,
   } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
 
-  // Fetch organizations (for edit mode)
-  const {
-    data: organizationsData,
-    loading: organizationsLoading,
-    execute: fetchOrganizations,
-  } = useApi(API_ENDPOINTS.ORGANIZATIONS.LIST, { immediate: false })
+  // Fetch single organization (for edit mode)
+  // We'll use apiClient directly since useApi doesn't handle conditional URLs well
+  const [organizationData, setOrganizationData] = useState(null)
+  const [organizationLoading, setOrganizationLoading] = useState(false)
 
   // Mutations
   const { execute: createOrganization } = useMutation(API_ENDPOINTS.ORGANIZATIONS.CREATE)
 
   const regions = regionsData?.regions || []
-  const organizations = organizationsData?.organizations || []
 
   // Check authentication and permissions
   useEffect(() => {
@@ -58,17 +56,13 @@ function OrganizationForm() {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
 
-      if (!canManageUsers(parsedUser)) {
-        toast.error('Access denied. You do not have permission to manage organizations.')
-        navigate('/dashboard/organizations')
-        return
-      }
+      // All authenticated users can access - no permission checks
 
       // Fetch required data
       fetchRegions()
 
-      // If editing, fetch organization data
-      if (isEditMode) {
+      // If editing, fetch organization data directly by ID
+      if (isEditMode && id) {
         fetchOrganizationData()
       }
     } catch (e) {
@@ -78,54 +72,42 @@ function OrganizationForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, id, isEditMode])
 
-  // Update form data when organizations load
+  // Update form data when organization loads (only once when data first arrives)
   useEffect(() => {
-    if (isEditMode && organizations.length > 0 && !formData.name) {
-      const orgToEdit = organizations.find(o => o.id === parseInt(id))
-      if (orgToEdit) {
-        setFormData({
-          name: orgToEdit.name || '',
-          region_id: orgToEdit.region_id || '',
-        })
-      }
+    if (isEditMode && organizationData?.organization && !formDataInitialized) {
+      const org = organizationData.organization
+      setFormData({
+        name: org.name || '',
+        region_id: org.region_id || '',
+      })
+      setFormDataInitialized(true)
+      setLoading(false)
     }
-  }, [organizations, id, isEditMode, formData.name])
+  }, [organizationData, id, isEditMode, formDataInitialized])
 
   const fetchOrganizationData = async () => {
+    if (!id) {
+      toast.error('Invalid organization ID')
+      navigate('/dashboard/organizations')
+      return
+    }
+
     setLoading(true)
+    setOrganizationLoading(true)
     try {
-      await fetchOrganizations()
-      // Wait for organizations state to update
-      setTimeout(() => {
-        const orgToEdit = organizations.find(o => o.id === parseInt(id))
-        if (orgToEdit) {
-          setFormData({
-            name: orgToEdit.name || '',
-            region_id: orgToEdit.region_id || '',
-          })
-          setLoading(false)
-        } else {
-          // Try once more after a short delay
-          setTimeout(() => {
-            const org = organizations.find(o => o.id === parseInt(id))
-            if (org) {
-              setFormData({
-                name: org.name || '',
-                region_id: org.region_id || '',
-              })
-            } else {
-              toast.error('Organization not found')
-              navigate('/dashboard/organizations')
-            }
-            setLoading(false)
-          }, 300)
-        }
-      }, 100)
+      const response = await apiClient.get(API_ENDPOINTS.ORGANIZATIONS.GET(id))
+      setOrganizationData(response.data)
+      // Form data will be updated by useEffect when organizationData changes
     } catch (error) {
       console.error('Error fetching organization:', error)
-      toast.error('Failed to load organization data')
-      navigate('/dashboard/organizations')
+      const errorMessage = error.response?.data?.message || 'Failed to load organization data'
+      toast.error(errorMessage)
+      if (error.response?.status === 404) {
+        navigate('/dashboard/organizations')
+      }
+    } finally {
       setLoading(false)
+      setOrganizationLoading(false)
     }
   }
 
@@ -209,13 +191,28 @@ function OrganizationForm() {
     }
   }
 
-  if (loading) {
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
+  }
+
+  if (loading || (isEditMode && organizationLoading)) {
     return (
       <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar />
+        <Sidebar user={user} onLogout={handleLogout} />
         <main className="flex-1 p-8">
           <div className="max-w-4xl mx-auto">
-            <p className="text-gray-600">Loading...</p>
+            <p className="text-gray-600">Loading organization...</p>
           </div>
         </main>
       </div>
@@ -224,7 +221,7 @@ function OrganizationForm() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar />
+      <Sidebar user={user} onLogout={handleLogout} />
       <main className="flex-1 p-8">
         <div className="max-w-4xl mx-auto">
           {/* Header */}

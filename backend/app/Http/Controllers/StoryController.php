@@ -110,11 +110,12 @@ class StoryController extends Controller
     {
         try {
             $stories = DB::table('stories')
-                ->join('users', 'stories.user_id', '=', 'users.id')
+                ->leftJoin('users', 'stories.user_id', '=', 'users.id') // Use leftJoin to include stories with deleted authors
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
                 ->where('stories.status', 'published')
                 ->select($this->getStorySelectFields())
                 ->orderBy('stories.published_at', 'desc')
+                ->orderBy('stories.created_at', 'desc') // Fallback for NULL published_at
                 ->get();
 
             return $this->successResponse([
@@ -144,7 +145,7 @@ class StoryController extends Controller
     {
         try {
             $story = DB::table('stories')
-                ->join('users', 'stories.user_id', '=', 'users.id')
+                ->leftJoin('users', 'stories.user_id', '=', 'users.id') // Use leftJoin to include stories with deleted authors
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
                 ->where('stories.slug', $slug)
                 ->where('stories.status', 'published')
@@ -212,7 +213,7 @@ class StoryController extends Controller
     {
         try {
             $story = DB::table('stories')
-                ->join('users', 'stories.user_id', '=', 'users.id')
+                ->leftJoin('users', 'stories.user_id', '=', 'users.id') // Use leftJoin to include stories with deleted authors
                 ->join('story_categories', 'stories.category_id', '=', 'story_categories.id')
                 ->where('stories.id', $id)
                 ->where('stories.status', 'published')
@@ -356,7 +357,7 @@ class StoryController extends Controller
     }
 
     /**
-     * Create a new story (Writer only)
+     * Create a new story (Available to all users)
      * 
      * @param Request $request
      * @return JsonResponse
@@ -412,18 +413,20 @@ class StoryController extends Controller
             }
 
             // Check if user can post stories
-            if (!PermissionHelper::canPostStories($user)) {
-                return $this->errorResponse('You do not have permission to post stories', 403);
-            }
+            // Temporarily disabled - all users currently have all permissions
+            // if (!PermissionHelper::canPostStories($user)) {
+            //     return $this->errorResponse('You do not have permission to post stories', 403);
+            // }
 
             // Verify user is a Writer (only Writers can create stories)
-            $userRole = DB::table('roles')
-                ->where('id', $user->role_id)
-                ->first();
+            // Temporarily disabled - all users can now create stories
+            // $userRole = DB::table('roles')
+            //     ->where('id', $user->role_id)
+            //     ->first();
 
-            if (!$userRole || $userRole->role_name !== 'Writer') {
-                return $this->errorResponse('Only Writers can create stories', 403);
-            }
+            // if (!$userRole || $userRole->role_name !== 'Writer') {
+            //     return $this->errorResponse('Only Writers can create stories', 403);
+            // }
 
             // Super admins have access to all categories
             $superAdminRoleId = DB::table('roles')
@@ -433,18 +436,19 @@ class StoryController extends Controller
             $isSuperAdmin = $user->role_id == $superAdminRoleId;
 
             // Check if user has access to this category via organization
-            $hasCategoryAccess = false;
-            if ($user->organization_id) {
-                // Check if category is assigned to user's organization
-                $hasCategoryAccess = DB::table('category_organizations')
-                    ->where('category_id', $request->category_id)
-                    ->where('organization_id', $user->organization_id)
-                    ->exists();
-            }
+            // Temporarily disabled - all users currently have access to all categories
+            // $hasCategoryAccess = false;
+            // if ($user->organization_id) {
+            //     // Check if category is assigned to user's organization
+            //     $hasCategoryAccess = DB::table('category_organizations')
+            //         ->where('category_id', $request->category_id)
+            //         ->where('organization_id', $user->organization_id)
+            //         ->exists();
+            // }
 
-            if (!$isSuperAdmin && !$hasCategoryAccess) {
-                return $this->errorResponse('You do not have access to post in this category', 403);
-            }
+            // if (!$isSuperAdmin && !$hasCategoryAccess) {
+            //     return $this->errorResponse('You do not have access to post in this category', 403);
+            // }
 
             // Verify category is active
             $category = DB::table('story_categories')
@@ -1169,6 +1173,12 @@ class StoryController extends Controller
 
     /**
      * Delete a story (Super admin only)
+     * 
+     * IMPORTANT: This is the ONLY way stories can be deleted in the system.
+     * Stories are protected from automatic deletion:
+     * - Foreign key on user_id uses SET NULL (stories preserved when authors are deleted)
+     * - Foreign key on category_id uses RESTRICT (categories with stories cannot be deleted)
+     * - Stories can only be removed through this explicit admin action
      * 
      * @param Request $request
      * @param int $id

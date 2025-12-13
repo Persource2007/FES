@@ -9,6 +9,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Cookie;
 
 /**
  * Authenticate Session Middleware
@@ -53,6 +54,7 @@ class AuthenticateSession
     public function handle(Request $request, Closure $next)
     {
         $sessionId = $request->cookie('session_id');
+        $cookieToRefresh = null; // Track if we need to refresh the cookie
         
         if (!$sessionId) {
             return response()->json([
@@ -67,10 +69,27 @@ class AuthenticateSession
             ->first();
         
         if (!$sessionData) {
+            // Session not found - clear the invalid cookie
+            Log::warning('Session not found in database, clearing cookie', [
+                'session_id' => $sessionId,
+            ]);
+            
+            $cookie = new Cookie(
+                'session_id',
+                '',
+                time() - 3600, // Expired (1 hour ago)
+                '/',
+                null,
+                false,
+                true,
+                false,
+                'lax'
+            );
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized - Session not found'
-            ], 401);
+            ], 401)->cookie($cookie);
         }
         
         // Load session model for easier access
@@ -86,6 +105,7 @@ class AuthenticateSession
         // Check if session is expired
         if ($session->isExpired()) {
             // Token is expired - try to refresh using refresh token
+            // OAuth server will validate if refresh token is still valid
             if ($session->oauth_refresh_token) {
                 try {
                     Log::info('Token expired, attempting refresh', [
@@ -113,16 +133,31 @@ class AuthenticateSession
                         'session_id' => $sessionId,
                         'new_expires_at' => $session->expires_at,
                     ]);
+                    
+                    // Refresh the session cookie to ensure it's still valid
+                    // This is important if the cookie was about to expire
+                    $cookieToRefresh = new Cookie(
+                        'session_id',
+                        $sessionId,
+                        time() + (60 * 24 * 7), // 7 days
+                        '/',
+                        null, // domain
+                        config('app.env') === 'production', // secure (HTTPS only in production)
+                        true, // httpOnly
+                        false, // raw
+                        'lax' // sameSite
+                    );
                 } catch (\Exception $e) {
-                    // Refresh token is expired/invalid or OAuth server error
-                    Log::warning('Token refresh failed in middleware', [
+                    // Refresh token is expired/invalid (OAuth server rejected it) or OAuth server error
+                    // OAuth server is the source of truth for refresh token validity
+                    Log::warning('Token refresh failed - OAuth server rejected refresh token', [
                         'session_id' => $sessionId,
                         'error' => $e->getMessage(),
                     ]);
                     
                     return response()->json([
                         'success' => false,
-                        'message' => 'Unauthorized - Session expired'
+                        'message' => 'Unauthorized - Refresh token expired. Please login again.'
                     ], 401);
                 }
             } else {
@@ -138,7 +173,7 @@ class AuthenticateSession
             }
         } else {
             // Session is still valid, but check if we should refresh proactively
-            $this->refreshIfNeeded($session);
+            $this->refreshIfNeeded($session, $cookieToRefresh);
         }
         
         // Attach user to request
@@ -157,35 +192,63 @@ class AuthenticateSession
             return $user;
         });
         
-        return $next($request);
+        // Get the response from the next middleware/controller
+        $response = $next($request);
+        
+        // If cookie was refreshed during token refresh, attach it to the response
+        if ($cookieToRefresh !== null) {
+            $response->headers->setCookie($cookieToRefresh);
+        }
+        
+        return $response;
     }
 
     /**
      * Check if token needs refresh and refresh if needed
      * 
      * @param Session $session
+     * @param Cookie|null &$cookieToRefresh Reference to cookie variable to set if refresh happens
      * @return void
      */
-    private function refreshIfNeeded(Session $session): void
+    private function refreshIfNeeded(Session $session, ?Cookie &$cookieToRefresh = null): void
     {
         // Check if token expires within the threshold
         $expiresAt = $session->expires_at;
         $threshold = \Carbon\Carbon::now()->addMinutes(self::REFRESH_THRESHOLD_MINUTES);
         
+        // Only refresh if:
+        // 1. Access token expires within threshold
+        // 2. Refresh token exists
+        // OAuth server will validate refresh token validity when we attempt refresh
         if ($expiresAt->lte($threshold) && $session->oauth_refresh_token) {
             // Token is about to expire, refresh it
+            // OAuth server will reject if refresh token is expired
             try {
                 $this->attemptTokenRefresh($session);
                 Log::info('Token refreshed proactively', [
                     'session_id' => $session->id,
                 ]);
+                
+                // Refresh the session cookie when proactively refreshing token
+                $cookieToRefresh = new Cookie(
+                    'session_id',
+                    $session->id,
+                    time() + (60 * 24 * 7), // 7 days
+                    '/',
+                    null, // domain
+                    config('app.env') === 'production', // secure (HTTPS only in production)
+                    true, // httpOnly
+                    false, // raw
+                    'lax' // sameSite
+                );
             } catch (\Exception $e) {
-                Log::warning('Proactive token refresh failed', [
+                Log::warning('Proactive token refresh failed - OAuth server may have rejected refresh token', [
                     'session_id' => $session->id,
                     'error' => $e->getMessage(),
                 ]);
                 // Don't fail the request if proactive refresh fails
                 // The token is still valid, we'll try again next time
+                // If refresh token is expired, OAuth server will reject it and user will be forced to login on next request
             }
         }
     }

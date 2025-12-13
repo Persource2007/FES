@@ -69,6 +69,51 @@ class OrganizationController extends Controller
     }
 
     /**
+     * Get a single organization by ID
+     * 
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function show(int $id): JsonResponse
+    {
+        try {
+            // Get organization with region
+            $organization = DB::table('organizations')
+                ->leftJoin('regions', 'organizations.region_id', '=', 'regions.id')
+                ->where('organizations.id', $id)
+                ->select(
+                    'organizations.id',
+                    'organizations.name',
+                    'organizations.region_id',
+                    'regions.name as region_name',
+                    'organizations.is_active',
+                    'organizations.created_at',
+                    'organizations.updated_at'
+                )
+                ->first();
+
+            if (!$organization) {
+                return $this->errorResponse('Organization not found', 404);
+            }
+
+            return $this->successResponse([
+                'organization' => $organization,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching organization', [
+                'id' => $id,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse(
+                'An error occurred while fetching organization',
+                500
+            );
+        }
+    }
+
+    /**
      * Create a new organization
      * 
      * @param Request $request

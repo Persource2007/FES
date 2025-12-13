@@ -20,16 +20,12 @@ import Sidebar from '../components/Sidebar'
 import LocationSelector from '../components/LocationSelector'
 import { addActivity } from '../utils/activity'
 import { formatDateTime } from '../utils/dateFormat'
-import {
-  canManageStoryCategories,
-  canPostStories,
-  canViewStories,
-} from '../utils/permissions'
+import { canManageStoryCategories, canPostStories } from '../utils/permissions'
 
 function Stories() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
-  const [activeTab, setActiveTab] = useState('categories')
+  const [activeTab, setActiveTab] = useState('submit-story') // Default to submit story for all users
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
@@ -43,9 +39,7 @@ function Stories() {
   })
 
 
-  const canManageCategories = canManageStoryCategories(user)
-  const canPost = canPostStories(user)
-  const canView = canViewStories(user)
+  // All authenticated users have access - no permission checks needed
 
   // Fetch categories with user_id for organization filtering
   const fetchCategories = async () => {
@@ -115,6 +109,10 @@ function Stories() {
   const [approvedStoriesLoading, setApprovedStoriesLoading] = useState(false)
   const isFetchingApprovedStories = useRef(false)
   const [expandedStories, setExpandedStories] = useState(new Set()) // Track expanded stories for read more
+  
+  // Permission flags (computed from user object)
+  const canManage = user ? canManageStoryCategories(user) : false
+  // Note: All authenticated users can post stories (permission checks removed temporarily)
 
   // Writer story submission state (moved to top level to follow Rules of Hooks)
   const [showSubmitForm, setShowSubmitForm] = useState(false)
@@ -235,26 +233,24 @@ function Stories() {
     }
   }, [user?.id])
 
-  // Fetch data on mount
+  // Fetch data on mount - All authenticated users can access story features
   useEffect(() => {
     if (user?.id) {
-      const canManage = canManageStoryCategories(user)
-      const canPost = canPostStories(user)
+      // Always fetch categories and regions for story submission
+      fetchWriterCategories() // This fetches categories accessible to the user
+      fetchWriterStories() // Fetch user's own stories
+      fetchRegions() // Needed for location selector
+      
+      // If user can manage categories, also fetch admin data
       if (canManage) {
-        fetchCategories()
+        fetchCategories() // Full category list for management
         fetchOrganizations()
-        fetchRegions()
         fetchApprovedStories()
-      } else if (canPost) {
-        // Fetch categories accessible by this writer
-        fetchWriterCategories()
-        fetchWriterStories()
-        fetchRegions()
       }
     }
     // fetchApprovedStories is stable via useCallback, so we don't need it in deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id])
+  }, [user?.id, canManage])
 
   // Check if user is Editor
   // User object has role.name, not role_name directly
@@ -443,9 +439,19 @@ function Stories() {
   }
 
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
+  const handleLogout = async () => {
+    try {
+      // Import logoutOAuth dynamically to avoid circular dependencies
+      const { logoutOAuth } = await import('../utils/oauthLogin')
+      // Call BFF logout endpoint to destroy session on server
+      // logoutOAuth() handles all localStorage cleanup
+      await logoutOAuth()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Redirect to home page (using window.location for reliable logout redirect)
+      window.location.href = '/'
+    }
   }
 
 
@@ -523,8 +529,8 @@ function Stories() {
         setShowSubmitForm(false)
         setSelectedCategory(null)
         addActivity('create', `Submitted story: ${storyFormData.title}`)
-        // Refresh writer stories list
-        if (writerTab === 'my-stories') {
+        // Refresh writer stories list if on my-stories tab
+        if (activeTab === 'my-stories') {
           fetchWriterStories()
         }
       }
@@ -537,8 +543,6 @@ function Stories() {
     }
   }
 
-  // Reader story tab state
-  const [writerTab, setWriterTab] = useState('submit') // 'submit' or 'my-stories'
 
   // Story edit form state (for admin)
   const [editStoryForm, setEditStoryForm] = useState({
@@ -636,61 +640,104 @@ function Stories() {
   }
 
 
-  // Render reader story submission view if user can post but not manage categories
-  if (canPost && !canManageCategories) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar user={user} onLogout={handleLogout} />
-        <main className="flex-1 transition-all duration-200 ease-in-out">
-          <header className="bg-white shadow-sm sticky top-0 z-30">
-            <div className="px-4 sm:px-6 lg:px-8 py-4">
-              <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Stories</h1>
-                {writerTab === 'submit' && !showSubmitForm && (
-                  <button
-                    onClick={() => setShowSubmitForm(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
-                  >
-                    <FaPlus /> Submit New Story
-                  </button>
-                )}
-              </div>
-              {/* Tabs */}
-              <div className="mt-4 border-b border-gray-200">
-                <nav className="-mb-px flex space-x-8">
-                  <button
-                    onClick={() => {
-                      setWriterTab('submit')
-                      setShowSubmitForm(false)
-                    }}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      writerTab === 'submit'
-                        ? 'border-slate-700 text-slate-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    Submit Story
-                  </button>
-                  <button
-                    onClick={() => {
-                      setWriterTab('my-stories')
-                      fetchWriterStories()
-                    }}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      writerTab === 'my-stories'
-                        ? 'border-slate-700 text-slate-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    My Stories
-                  </button>
-                </nav>
-              </div>
+  // Note: Story submission is now available to all authenticated users
+  // All users see the unified interface with tabs
+
+  // Category management view (for all authenticated users, with tabs based on permissions)
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      <Sidebar user={user} onLogout={handleLogout} />
+      <main className="flex-1 transition-all duration-200 ease-in-out">
+        <header className="bg-white shadow-sm sticky top-0 z-30">
+          <div className="px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-gray-900">Stories</h1>
+              {canManage && activeTab === 'categories' && (
+                <button
+                  onClick={() => {
+                    setEditingCategory(null)
+                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
+                    setShowAddModal(true)
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  <FaPlus /> Add Category
+                </button>
+              )}
             </div>
-          </header>
-          <div className="px-4 sm:px-6 lg:px-8 py-8">
-            {writerTab === 'submit' ? (
-              showSubmitForm ? (
+          </div>
+        </header>
+
+        {/* Tabs - Available to all authenticated users */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="px-4 sm:px-6 lg:px-8">
+            <div className="flex gap-4">
+              {/* Submit Story tab - Available to all users */}
+              <button
+                onClick={() => {
+                  setActiveTab('submit-story')
+                  if (!categories.length && !categoriesLoading) {
+                    fetchWriterCategories()
+                  }
+                }}
+                className={`px-4 py-3 font-medium border-b-2 transition-colors ${
+                  activeTab === 'submit-story'
+                    ? 'border-slate-700 text-slate-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Submit Story
+              </button>
+              {/* My Stories tab - Available to all users */}
+              <button
+                onClick={() => {
+                  setActiveTab('my-stories')
+                  fetchWriterStories()
+                }}
+                className={`px-4 py-3 font-medium border-b-2 transition-colors ${
+                  activeTab === 'my-stories'
+                    ? 'border-slate-700 text-slate-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                My Stories
+              </button>
+              {/* Categories and Approved Stories tabs - Only for users with manage permission */}
+              {canManage && (
+                <>
+                  <button
+                    onClick={() => setActiveTab('categories')}
+                    className={`px-4 py-3 font-medium border-b-2 transition-colors ${
+                      activeTab === 'categories'
+                        ? 'border-slate-700 text-slate-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Categories
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('approved-stories')
+                      fetchApprovedStories()
+                    }}
+                    className={`px-4 py-3 font-medium border-b-2 transition-colors ${
+                      activeTab === 'approved-stories'
+                        ? 'border-slate-700 text-slate-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Approved Stories
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 sm:px-6 lg:px-8 py-8">
+          {/* Submit Story Tab - Available to all users */}
+          {activeTab === 'submit-story' && (
+            showSubmitForm ? (
                 <div className="bg-white rounded-lg shadow p-6">
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-xl font-semibold text-gray-800">
@@ -1055,136 +1102,74 @@ function Stories() {
                   )}
                 </div>
               )
-            ) : writerTab === 'my-stories' ? (
-              // My Stories tab
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                  My Stories
-                </h2>
-                {writerStoriesLoading ? (
-                  <p className="text-gray-500">Loading your stories...</p>
-                ) : writerStories.length === 0 ? (
-                  <p className="text-gray-500">You haven't submitted any stories yet.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {writerStories.map((story) => (
-                      <div
-                        key={story.id}
-                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-lg font-semibold text-gray-900">
-                                {story.title}
-                              </h3>
-                              <span
-                                className={`px-2 py-1 text-xs font-medium rounded ${getStatusBadge(
-                                  story.status
-                                )}`}
-                              >
-                                {story.status.charAt(0).toUpperCase() + story.status.slice(1)}
-                              </span>
+          )}
+
+          {/* My Stories Tab - Available to all users */}
+          {activeTab === 'my-stories' && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                My Stories
+              </h2>
+              {writerStoriesLoading ? (
+                <p className="text-gray-500">Loading your stories...</p>
+              ) : writerStories.length === 0 ? (
+                <p className="text-gray-500">You haven't submitted any stories yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {writerStories.map((story) => (
+                    <div
+                      key={story.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              {story.title}
+                            </h3>
+                            <span
+                              className={`px-2 py-1 text-xs font-medium rounded ${getStatusBadge(
+                                story.status
+                              )}`}
+                            >
+                              {story.status.charAt(0).toUpperCase() + story.status.slice(1)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-2">
+                            <div className="flex items-center gap-1">
+                              <FaFolder className="text-gray-400" />
+                              <span>{story.category_name}</span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-2">
-                              <div className="flex items-center gap-1">
-                                <FaFolder className="text-gray-400" />
-                                <span>{story.category_name}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <FaClock className="text-gray-400" />
-                                <span>Submitted {formatDateTime(story.created_at)}</span>
-                              </div>
-                              {story.published_at && (
-                                <div className="flex items-center gap-1">
-                                  <FaCheck className="text-gray-400" />
-                                  <span>Published {formatDateTime(story.published_at)}</span>
-                                </div>
-                              )}
+                            <div className="flex items-center gap-1">
+                              <FaClock className="text-gray-400" />
+                              <span>Submitted {formatDateTime(story.created_at)}</span>
                             </div>
-                            {story.rejection_reason && (
-                              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
-                                <strong>Rejection Reason:</strong> {story.rejection_reason}
+                            {story.published_at && (
+                              <div className="flex items-center gap-1">
+                                <FaCheck className="text-gray-400" />
+                                <span>Published {formatDateTime(story.published_at)}</span>
                               </div>
                             )}
-                            <p className="text-gray-700 mt-2 line-clamp-3">
-                              {story.content}
-                            </p>
                           </div>
+                          {story.rejection_reason && (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                              <strong>Rejection Reason:</strong> {story.rejection_reason}
+                            </div>
+                          )}
+                          <p className="text-gray-700 mt-2 line-clamp-3">
+                            {story.content}
+                          </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </main>
-      </div>
-    )
-  }
-
-  // Category management view (for users with manage_story_categories permission)
-  return (
-    <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar user={user} onLogout={handleLogout} />
-      <main className="flex-1 transition-all duration-200 ease-in-out">
-        <header className="bg-white shadow-sm sticky top-0 z-30">
-          <div className="px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-gray-900">Stories</h1>
-              {canManageCategories && activeTab === 'categories' && (
-                <button
-                  onClick={() => {
-                    setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
-                    setShowAddModal(true)
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  <FaPlus /> Add Category
-                </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-        </header>
+          )}
 
-        {/* Tabs */}
-        {canManageCategories && (
-          <div className="bg-white border-b border-gray-200">
-            <div className="px-4 sm:px-6 lg:px-8">
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setActiveTab('categories')}
-                  className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                    activeTab === 'categories'
-                      ? 'border-slate-700 text-slate-700'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Categories
-                </button>
-                <button
-                  onClick={() => {
-                    setActiveTab('approved-stories')
-                    fetchApprovedStories()
-                  }}
-                  className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                    activeTab === 'approved-stories'
-                      ? 'border-slate-700 text-slate-700'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Approved Stories
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="px-4 sm:px-6 lg:px-8 py-8">
-          {/* Categories Tab */}
-          {activeTab === 'categories' && (
+          {/* Categories Tab - Only for users with manage permission */}
+          {activeTab === 'categories' && canManage && (
             <div className="bg-white rounded-lg shadow">
               {categoriesLoading ? (
                 <div className="p-8 text-center text-gray-500">
@@ -1290,8 +1275,8 @@ function Stories() {
           )}
 
 
-          {/* Approved Stories Tab */}
-          {activeTab === 'approved-stories' && (
+          {/* Approved Stories Tab - Only for users with manage permission */}
+          {activeTab === 'approved-stories' && canManage && (
             <div className="bg-white rounded-lg shadow">
               {approvedStoriesLoading ? (
                 <div className="p-8 text-center text-gray-500">

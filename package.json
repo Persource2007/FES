@@ -14,10 +14,12 @@
     "@ckeditor/ckeditor5-react": "^11.0.0",
     "axios": "^1.6.2",
     "ckeditor5": "^47.3.0",
+    "leaflet": "^1.9.4",
     "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^4.12.0",
+    "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.20.1",
     "react-simple-maps": "^3.0.0",
     "react-toastify": "^9.1.3"

@@ -7,7 +7,6 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -88,7 +87,6 @@ class UserController extends Controller
                 'name' => 'required|string|max:255',
                 'organization_id' => 'required|integer|exists:organizations,id',
                 'email' => 'required|email|max:255|unique:users,email',
-                'password' => 'required|string|min:1',
                 'role_id' => 'required|integer|exists:roles,id',
             ]);
 
@@ -116,10 +114,10 @@ class UserController extends Controller
             }
 
             // Create user with organization_id and set region_id from organization
+            // Note: No password field - authentication is handled via OAuth
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
-                'password' => Hash::make($request->password),
                 'role_id' => $request->role_id,
                 'organization_id' => $request->organization_id,
                 'region_id' => $organization->region_id, // Set region from organization
@@ -341,6 +339,10 @@ class UserController extends Controller
     /**
      * Delete a user
      * 
+     * Note: When a user is deleted, their stories are preserved with user_id set to NULL
+     * (due to foreign key constraint ON DELETE SET NULL). Stories will still be accessible
+     * but will show as having no author.
+     * 
      * @param int $id
      * @return JsonResponse
      */
@@ -362,11 +364,20 @@ class UserController extends Controller
                 return $this->errorResponse('Cannot delete Super admin user', 403);
             }
 
+            // Check if user has stories
+            $storyCount = DB::table('stories')->where('user_id', $id)->count();
+            
             // Delete user
+            // Stories will have their user_id automatically set to NULL due to foreign key constraint
             $user->delete();
 
+            $message = 'User deleted successfully';
+            if ($storyCount > 0) {
+                $message .= ". {$storyCount} story(ies) by this user have been preserved with author information removed.";
+            }
+
             return $this->successResponse([
-                'message' => 'User deleted successfully',
+                'message' => $message,
             ]);
         } catch (\Exception $e) {
             Log::error('Error deleting user', [
