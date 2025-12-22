@@ -82,6 +82,14 @@ class StoryController extends Controller
             ]);
         }
         
+        // Add latitude and longitude if columns exist
+        if (Schema::hasColumn('stories', 'latitude')) {
+            $fields[] = 'stories.latitude';
+        }
+        if (Schema::hasColumn('stories', 'longitude')) {
+            $fields[] = 'stories.longitude';
+        }
+        
         // Add user fields if requested
         if ($includeUserFields) {
             $fields = array_merge($fields, [
@@ -172,6 +180,8 @@ class StoryController extends Controller
                     'stories.panchayat_name',
                     'stories.village_id',
                     'stories.village_name',
+                    'stories.latitude',
+                    'stories.longitude',
                     'stories.description',
                     'stories.content',
                     'stories.status',
@@ -388,6 +398,8 @@ class StoryController extends Controller
                 'panchayat_name' => 'nullable|string|max:255',
                 'village_id' => 'nullable|string|max:255',
                 'village_name' => 'nullable|string|max:255',
+                'latitude' => 'nullable|numeric|between:-90,90',
+                'longitude' => 'nullable|numeric|between:-180,180',
                 'description' => 'nullable|string',
                 'content' => 'required|string',
             ]);
@@ -488,6 +500,8 @@ class StoryController extends Controller
                 'panchayat_name' => $request->input('panchayat_name') ?: null,
                 'village_id' => $request->input('village_id') ?: null,
                 'village_name' => $request->input('village_name') ?: null,
+                'latitude' => $request->input('latitude') ?: null,
+                'longitude' => $request->input('longitude') ?: null,
                 'description' => $request->input('description'),
                 'content' => $request->content,
                 'status' => 'pending',
@@ -947,6 +961,14 @@ class StoryController extends Controller
                 ]);
             }
             
+            // Add latitude and longitude if columns exist
+            if (Schema::hasColumn('stories', 'latitude')) {
+                $selectFields[] = 'stories.latitude';
+            }
+            if (Schema::hasColumn('stories', 'longitude')) {
+                $selectFields[] = 'stories.longitude';
+            }
+            
             $stories = $query->select($selectFields)
                 ->orderBy('stories.published_at', 'desc')
                 ->get();
@@ -1005,6 +1027,8 @@ class StoryController extends Controller
                 'panchayat_name' => 'sometimes|nullable|string|max:255',
                 'village_id' => 'sometimes|nullable|string|max:255',
                 'village_name' => 'sometimes|nullable|string|max:255',
+                'latitude' => 'sometimes|nullable|numeric|between:-90,90',
+                'longitude' => 'sometimes|nullable|numeric|between:-180,180',
                 'description' => 'sometimes|nullable|string',
                 'content' => 'sometimes|string',
                 'category_id' => 'sometimes|integer|exists:story_categories,id',
@@ -1135,6 +1159,12 @@ class StoryController extends Controller
             if ($request->has('village_name')) {
                 $story->village_name = $request->village_name ?: null;
             }
+            if ($request->has('latitude')) {
+                $story->latitude = $request->latitude ?: null;
+            }
+            if ($request->has('longitude')) {
+                $story->longitude = $request->longitude ?: null;
+            }
             if ($request->has('description')) {
                 $story->description = $request->description ?: null;
             }
@@ -1143,6 +1173,20 @@ class StoryController extends Controller
             }
             if ($request->has('category_id')) {
                 $story->category_id = $request->category_id;
+            }
+            if ($request->has('status')) {
+                // Allow changing status to pending (unpublish) or back to published
+                $newStatus = $request->status;
+                if ($newStatus === 'pending' || $newStatus === 'published') {
+                    $story->status = $newStatus;
+                    // If unpublishing (status = pending), clear published_at
+                    if ($newStatus === 'pending') {
+                        $story->published_at = null;
+                    } elseif ($newStatus === 'published' && !$story->published_at) {
+                        // If republishing and no published_at, set it
+                        $story->published_at = date('Y-m-d H:i:s');
+                    }
+                }
             }
             $story->save();
 

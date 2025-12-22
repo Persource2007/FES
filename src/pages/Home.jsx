@@ -12,8 +12,9 @@ import IndiaMap from '../components/IndiaMap'
 function Home() {
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white flex flex-col">
       <Header />
+      <main className="flex-1">
 
       {/* Masthead Banner */}
       <section className="relative w-full h-[500px] lg:h-[600px] overflow-hidden">
@@ -217,7 +218,7 @@ function Home() {
           </div>
         </div>
       </section>
-
+      </main>
       <Footer />
     </div>
   )

@@ -18,6 +18,7 @@ import {
   FaBuilding,
   FaCode,
   FaExternalLinkAlt,
+  FaFolder,
 } from 'react-icons/fa'
 // Removed permission imports - all authenticated users have access
 import { useApi } from '../hooks/useApi'
@@ -238,6 +239,12 @@ function Sidebar({ user, onLogout }) {
       name: 'Users',
       path: '/dashboard/users',
       icon: FaUsers,
+      visible: true,
+    },
+    {
+      name: 'Categories',
+      path: '/dashboard/categories',
+      icon: FaFolder,
       visible: true,
     },
     {

@@ -39,13 +39,14 @@ export const useTokenRefresh = (enabled = true) => {
 
     init()
 
-    // Set up periodic token refresh check
+    // Set up periodic token refresh check (less frequent - every 5 minutes)
+    // Only refresh if token actually needs refresh (not just checking)
     intervalRef.current = setInterval(async () => {
       if (shouldRefreshToken() || isTokenExpired()) {
         console.log('[useTokenRefresh] Periodic check: Token needs refresh')
         await refreshToken()
       }
-    }, 60000) // Check every 1 minute
+    }, 5 * 60 * 1000) // Check every 5 minutes instead of 1 minute
 
     // Handle visibility change (user returns to tab)
     const handleVisibilityChange = async () => {

@@ -57,7 +57,7 @@ function Dashboard() {
       <main className="flex-1 transition-all duration-200 ease-in-out">
         {/* Top Header */}
         <header className="bg-white shadow-sm sticky top-0 z-30">
-          <div className="px-4 sm:px-6 lg:px-8 py-4">
+          <div className="pl-14 sm:pl-14 lg:pl-8 pr-4 sm:pr-6 lg:pr-8 py-4">
             <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           </div>
         </header>

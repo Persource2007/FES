@@ -15,6 +15,9 @@ import OAuthCallback from './pages/OAuthCallback'
 import DashboardAPI from './pages/DashboardAPI'
 import UserForm from './pages/UserForm'
 import OrganizationForm from './pages/OrganizationForm'
+import StoryForm from './pages/StoryForm'
+import CategoryForm from './pages/CategoryForm'
+import Categories from './pages/Categories'
 import ProtectedRoute from './components/ProtectedRoute'
 import { useTokenRefresh } from './hooks/useTokenRefresh'
 
@@ -89,6 +92,14 @@ function App() {
           }
         />
         <Route
+          path="/dashboard/categories"
+          element={
+            <ProtectedRoute>
+              <Categories />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboard/activity"
           element={
             <ProtectedRoute>
@@ -105,10 +116,42 @@ function App() {
           }
         />
         <Route
+          path="/dashboard/stories/new"
+          element={
+            <ProtectedRoute>
+              <StoryForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/stories/:id/edit"
+          element={
+            <ProtectedRoute>
+              <StoryForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboard/stories/review"
           element={
             <ProtectedRoute>
               <StoryReview />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/categories/new"
+          element={
+            <ProtectedRoute>
+              <CategoryForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/categories/:id/edit"
+          element={
+            <ProtectedRoute>
+              <CategoryForm />
             </ProtectedRoute>
           }
         />

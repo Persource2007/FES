@@ -18,7 +18,7 @@ return [
     
     'redirect_uri' => env('OAUTH_REDIRECT_URI', 'https://geet.observatory.org.in'),
     
-    'scope' => env('OAUTH_SCOPE', 'read'),
+    'scope' => env('OAUTH_SCOPE', 'openid email profile'),
     
     /*
     |--------------------------------------------------------------------------

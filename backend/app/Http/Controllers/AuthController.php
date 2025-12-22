@@ -296,10 +296,20 @@ class AuthController extends Controller
             }
             
             // 7. Return session cookie (HTTP-only, secure)
+            $cookieExpiry = time() + (60 * 60 * 24 * 7); // 7 days in seconds (60 seconds * 60 minutes * 24 hours * 7 days = 604800 seconds)
+            Log::info('Setting session cookie', [
+                'session_id' => $sessionId,
+                'expires_at_timestamp' => $cookieExpiry,
+                'expires_at_readable' => date('Y-m-d H:i:s', $cookieExpiry),
+                'expires_in_seconds' => 60 * 60 * 24 * 7,
+                'expires_in_hours' => (60 * 60 * 24 * 7) / 3600,
+                'current_time' => time(),
+                'current_time_readable' => date('Y-m-d H:i:s', time()),
+            ]);
             $cookie = new Cookie(
                 'session_id',
                 $sessionId,
-                time() + (60 * 24 * 7), // 7 days
+                $cookieExpiry,
                 '/',
                 null, // domain
                 config('app.env') === 'production', // secure (HTTPS only in production)

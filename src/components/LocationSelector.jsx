@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { FaSpinner } from 'react-icons/fa'
 import axios from 'axios'
 
@@ -21,7 +21,8 @@ function LocationSelector({
   onPanchayatChange,
   onVillageChange,
   showLabels = true,
-  className = ''
+  className = '',
+  preserveDownstreamValues = false // If true, don't clear downstream fields when parent changes
 }) {
   // Data states
   const [states, setStates] = useState([])
@@ -74,21 +75,45 @@ function LocationSelector({
     }
   }
 
+  // Track if we're in initialization phase (all IDs set at once)
+  const isInitializingRef = useRef(true)
+  const prevStateIdRef = useRef(null)
+  const prevDistrictIdRef = useRef(null)
+  const prevSubDistrictIdRef = useRef(null)
+  const prevPanchayatIdRef = useRef(null)
+  
+  // Detect when initialization is complete (all IDs are set and stable)
+  useEffect(() => {
+    if (selectedStateId && selectedDistrictId && isInitializingRef.current) {
+      // Wait a bit to ensure all IDs are set
+      const timer = setTimeout(() => {
+        isInitializingRef.current = false
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [selectedStateId, selectedDistrictId, selectedSubDistrictId, selectedBlockId, selectedPanchayatId, selectedVillageId])
+  
   // When state is selected, fetch districts
   useEffect(() => {
     if (selectedStateId) {
+      const isUserChange = prevStateIdRef.current !== null && prevStateIdRef.current !== selectedStateId
+      prevStateIdRef.current = selectedStateId
+      
       fetchDistricts(selectedStateId)
-      // Clear downstream selections
-      if (onDistrictChange) onDistrictChange('', '')
-      if (onSubDistrictChange) onSubDistrictChange('', '')
-      if (onBlockChange) onBlockChange('', '')
-      if (onPanchayatChange) onPanchayatChange('', '')
-      if (onVillageChange) onVillageChange('', '')
-      setDistricts([])
-      setSubDistricts([])
-      setBlocks([])
-      setPanchayats([])
-      setVillages([])
+      
+      // Only clear downstream selections if user changed the state (not during initialization)
+      if (isUserChange && !preserveDownstreamValues && !isInitializingRef.current) {
+        if (onDistrictChange) onDistrictChange('', '')
+        if (onSubDistrictChange) onSubDistrictChange('', '')
+        if (onBlockChange) onBlockChange('', '')
+        if (onPanchayatChange) onPanchayatChange('', '')
+        if (onVillageChange) onVillageChange('', '')
+        setDistricts([])
+        setSubDistricts([])
+        setBlocks([])
+        setPanchayats([])
+        setVillages([])
+      }
     }
   }, [selectedStateId])
 
@@ -128,17 +153,23 @@ function LocationSelector({
   // When district is selected, fetch sub-districts and blocks
   useEffect(() => {
     if (selectedDistrictId) {
+      const isUserChange = prevDistrictIdRef.current !== null && prevDistrictIdRef.current !== selectedDistrictId
+      prevDistrictIdRef.current = selectedDistrictId
+      
       fetchSubDistricts(selectedDistrictId)
       fetchBlocks(selectedDistrictId)
-      // Clear downstream selections
-      if (onSubDistrictChange) onSubDistrictChange('', '')
-      if (onBlockChange) onBlockChange('', '')
-      if (onPanchayatChange) onPanchayatChange('', '')
-      if (onVillageChange) onVillageChange('', '')
-      setSubDistricts([])
-      setBlocks([])
-      setPanchayats([])
-      setVillages([])
+      
+      // Only clear downstream selections if user changed the district (not during initialization)
+      if (isUserChange && !preserveDownstreamValues && !isInitializingRef.current) {
+        if (onSubDistrictChange) onSubDistrictChange('', '')
+        if (onBlockChange) onBlockChange('', '')
+        if (onPanchayatChange) onPanchayatChange('', '')
+        if (onVillageChange) onVillageChange('', '')
+        setSubDistricts([])
+        setBlocks([])
+        setPanchayats([])
+        setVillages([])
+      }
     }
   }, [selectedDistrictId])
 
@@ -211,12 +242,18 @@ function LocationSelector({
   // When sub-district is selected, fetch panchayats
   useEffect(() => {
     if (selectedSubDistrictId) {
+      const isUserChange = prevSubDistrictIdRef.current !== null && prevSubDistrictIdRef.current !== selectedSubDistrictId
+      prevSubDistrictIdRef.current = selectedSubDistrictId
+      
       fetchPanchayats(selectedSubDistrictId)
-      // Clear downstream selections
-      if (onPanchayatChange) onPanchayatChange('', '')
-      if (onVillageChange) onVillageChange('', '')
-      setPanchayats([])
-      setVillages([])
+      
+      // Only clear downstream selections if user changed the sub-district (not during initialization)
+      if (isUserChange && !preserveDownstreamValues && !isInitializingRef.current) {
+        if (onPanchayatChange) onPanchayatChange('', '')
+        if (onVillageChange) onVillageChange('', '')
+        setPanchayats([])
+        setVillages([])
+      }
     }
   }, [selectedSubDistrictId])
 
@@ -256,9 +293,16 @@ function LocationSelector({
   // When panchayat is selected, fetch villages
   useEffect(() => {
     if (selectedPanchayatId) {
+      const isUserChange = prevPanchayatIdRef.current !== null && prevPanchayatIdRef.current !== selectedPanchayatId
+      prevPanchayatIdRef.current = selectedPanchayatId
+      
       fetchVillages(selectedPanchayatId)
-      if (onVillageChange) onVillageChange('', '')
-      setVillages([])
+      
+      // Only clear village if user changed the panchayat (not during initialization)
+      if (isUserChange && !preserveDownstreamValues && !isInitializingRef.current) {
+        if (onVillageChange) onVillageChange('', '')
+        setVillages([])
+      }
     }
   }, [selectedPanchayatId])
 

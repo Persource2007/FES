@@ -15,7 +15,7 @@ const OAUTH_CONFIG = {
   clientSecret: 'a1a8ab04c6b245e7742a87c146d945f399139e85',
   // Use the same redirect URI as the OAuth testing page
   redirectUri: 'https://geet.observatory.org.in',
-  scope: 'read',
+  scope: 'openid email profile',
 }
 
 // Generate code verifier for PKCE
@@ -331,28 +331,92 @@ export const exchangeCodeForToken = async (code) => {
 }
 
 // Get user info from BFF (checks session)
-export const getUserInfo = async () => {
-  try {
-    const apiClient = (await import('./api')).default
-    const { API_ENDPOINTS } = await import('./constants')
-    
-    const response = await apiClient.get(API_ENDPOINTS.AUTH.ME)
-    
-    // Store user info in localStorage (but NOT tokens - they're in HTTP-only cookie)
-    if (response.data.user) {
-      localStorage.setItem('oauth_user', JSON.stringify(response.data.user))
-      return response.data.user
+// Request deduplication: prevent multiple simultaneous calls to /api/auth/me
+let getUserInfoPromise = null
+let lastGetUserInfoTime = 0
+const GET_USER_INFO_CACHE_MS = 30 * 1000 // Cache result for 30 seconds
+
+export const getUserInfo = async (force = false) => {
+  // If we have a cached result and it's recent, return it (unless forced)
+  if (!force) {
+    const cachedUser = localStorage.getItem('oauth_user')
+    if (cachedUser) {
+      try {
+        const user = JSON.parse(cachedUser)
+        const cacheTime = parseInt(localStorage.getItem('oauth_user_cache_time') || '0', 10)
+        const now = Date.now()
+        // If cached result is less than 30 seconds old, return it
+        if (now - cacheTime < GET_USER_INFO_CACHE_MS) {
+          return user
+        }
+      } catch (e) {
+        // Invalid cache, continue to fetch
+      }
     }
-    
-    return null
-  } catch (error) {
-    console.error('Get user info error:', error)
-    // If session expired, clear local state
-    if (error.response?.status === 401) {
-      localStorage.removeItem('oauth_user')
-    }
-    throw error
   }
+  
+  // If there's already a request in progress, return that promise
+  if (getUserInfoPromise && !force) {
+    const timeSinceLastRequest = Date.now() - lastGetUserInfoTime
+    // If last request was less than 2 seconds ago, reuse the promise
+    if (timeSinceLastRequest < 2000) {
+      return getUserInfoPromise
+    }
+  }
+  
+  // Create new request
+  getUserInfoPromise = (async () => {
+    try {
+      lastGetUserInfoTime = Date.now()
+      const apiClient = (await import('./api')).default
+      const { API_ENDPOINTS } = await import('./constants')
+      
+      const response = await apiClient.get(API_ENDPOINTS.AUTH.ME)
+      
+      console.log('getUserInfo response:', {
+        status: response.status,
+        data: response.data,
+        hasUser: !!response.data.user,
+        userData: response.data.user,
+      })
+      
+      // Store user info in localStorage (but NOT tokens - they're in HTTP-only cookie)
+      // Backend returns: {success: true, user: {...}, token: {...}}
+      if (response.data && response.data.user) {
+        localStorage.setItem('oauth_user', JSON.stringify(response.data.user))
+        localStorage.setItem('oauth_user_cache_time', Date.now().toString())
+        console.log('Stored oauth_user in localStorage:', response.data.user)
+        return response.data.user
+      } else {
+        console.warn('getUserInfo: No user data in response', response.data)
+        // If response is successful but no user data, clear localStorage
+        localStorage.removeItem('oauth_user')
+        localStorage.removeItem('oauth_user_cache_time')
+        return null
+      }
+    } catch (error) {
+      console.error('Get user info error:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        stack: error.stack,
+      })
+      // If session expired, clear local state
+      if (error.response?.status === 401) {
+        localStorage.removeItem('oauth_user')
+        localStorage.removeItem('oauth_user_cache_time')
+        console.log('Cleared oauth_user from localStorage due to 401')
+      }
+      throw error
+    } finally {
+      // Clear the promise after a short delay to allow reuse
+      setTimeout(() => {
+        getUserInfoPromise = null
+      }, 1000)
+    }
+  })()
+  
+  return getUserInfoPromise
 }
 
 // Check if user is logged in via OAuth (by checking session)

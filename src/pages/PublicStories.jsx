@@ -44,8 +44,9 @@ function PublicStories() {
 
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white flex flex-col">
       <Header />
+      <main className="flex-1">
 
       {/* Hero Section */}
       <section className="bg-gradient-to-b from-slate-50 to-white py-16">
@@ -173,7 +174,7 @@ function PublicStories() {
           </div>
         </div>
       )}
-
+      </main>
       <Footer />
     </div>
   )

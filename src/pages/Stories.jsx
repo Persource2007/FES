@@ -12,6 +12,7 @@ import {
   FaLock,
   FaFileAlt,
   FaClock,
+  FaBan,
 } from 'react-icons/fa'
 import { useApi, useMutation } from '../hooks/useApi'
 import { API_ENDPOINTS } from '../utils/constants'
@@ -19,58 +20,17 @@ import apiClient from '../utils/api'
 import Sidebar from '../components/Sidebar'
 import LocationSelector from '../components/LocationSelector'
 import { addActivity } from '../utils/activity'
-import { formatDateTime } from '../utils/dateFormat'
+import { formatDateTime, formatDateShort } from '../utils/dateFormat'
 import { canManageStoryCategories, canPostStories } from '../utils/permissions'
 
 function Stories() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [activeTab, setActiveTab] = useState('submit-story') // Default to submit story for all users
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [editingCategory, setEditingCategory] = useState(null)
-  const [deleteConfirm, setDeleteConfirm] = useState(null)
-
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    is_active: true,
-    organization_ids: [],
-  })
 
 
   // All authenticated users have access - no permission checks needed
 
-  // Fetch categories with user_id for organization filtering
-  const fetchCategories = async () => {
-    if (!user?.id) {
-      console.warn('Cannot fetch categories: user not loaded')
-      return
-    }
-    setCategoriesLoading(true)
-    try {
-      const response = await apiClient.get(API_ENDPOINTS.STORY_CATEGORIES.LIST, {
-        params: { user_id: user.id }
-      })
-      console.log('Categories response:', response.data)
-      if (response.data.success) {
-        setCategories(response.data.categories || [])
-      } else {
-        console.error('Categories API returned success=false:', response.data)
-        toast.error('Failed to load categories: ' + (response.data.message || 'Unknown error'))
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      })
-      toast.error('Failed to load categories: ' + (error.response?.data?.message || error.message))
-    } finally {
-      setCategoriesLoading(false)
-    }
-  }
 
 
   // Fetch organizations
@@ -89,22 +49,15 @@ function Stories() {
     execute: fetchRegions,
   } = useApi(API_ENDPOINTS.REGIONS.LIST, { immediate: false })
 
-  // Mutations
-  const { execute: createCategory, loading: creating } = useMutation(
-    API_ENDPOINTS.STORY_CATEGORIES.CREATE
-  )
-  const { execute: updateCategory, loading: updating } = useMutation(
-    API_ENDPOINTS.STORY_CATEGORIES.UPDATE(0)
-  )
 
   const [categories, setCategories] = useState([])
-  const [categoriesLoading, setCategoriesLoading] = useState(false)
   const organizations = organizationsData?.organizations || []
   const regions = regionsData?.regions || []
   const [writerStories, setWriterStories] = useState([])
   const [approvedStories, setApprovedStories] = useState([])
   const [editingStory, setEditingStory] = useState(null)
   const [deleteStoryConfirm, setDeleteStoryConfirm] = useState(null)
+  const [unpublishStoryConfirm, setUnpublishStoryConfirm] = useState(null)
   const [writerStoriesLoading, setWriterStoriesLoading] = useState(false)
   const [approvedStoriesLoading, setApprovedStoriesLoading] = useState(false)
   const isFetchingApprovedStories = useRef(false)
@@ -141,6 +94,8 @@ function Stories() {
     panchayat_name: '',
     village_id: '',
     village_name: '',
+    latitude: '',
+    longitude: '',
     content: '',
   })
 
@@ -241,9 +196,8 @@ function Stories() {
       fetchWriterStories() // Fetch user's own stories
       fetchRegions() // Needed for location selector
       
-      // If user can manage categories, also fetch admin data
+      // If user can manage stories, fetch admin data
       if (canManage) {
-        fetchCategories() // Full category list for management
         fetchOrganizations()
         fetchApprovedStories()
       }
@@ -252,191 +206,8 @@ function Stories() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, canManage])
 
-  // Check if user is Editor
-  // User object has role.name, not role_name directly
-  const isEditor = user?.role?.name === 'Editor' || user?.role_name === 'Editor'
-  
-  // Debug: Log editor status (remove in production)
-  useEffect(() => {
-    if (showAddModal) {
-      console.log('Modal opened - isEditor:', isEditor, 'user:', user, 'role:', user?.role, 'role.name:', user?.role?.name, 'role_name:', user?.role_name)
-    }
-  }, [showAddModal, isEditor, user])
-  
-  // Auto-set organization when creating new category (not editing) for Editors
-  useEffect(() => {
-    if (isEditor && user?.organization_id && !editingCategory && showAddModal) {
-      setFormData(prev => ({
-        ...prev,
-        organization_ids: [user.organization_id]
-      }))
-    }
-  }, [isEditor, user?.organization_id, editingCategory, showAddModal])
 
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }))
-  }
-
-  const handleAddCategory = async () => {
-    try {
-      // For Editors, ensure organization_ids includes their organization
-      const payload = { ...formData, user_id: user.id }
-      if (isEditor && user?.organization_id) {
-        payload.organization_ids = [user.organization_id]
-      }
-      
-      const response = await createCategory(payload)
-      if (response?.success) {
-        toast.success('Category created successfully')
-        setShowAddModal(false)
-        setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
-        fetchCategories()
-        addActivity('create', `Created story category: ${formData.name}`)
-      }
-    } catch (error) {
-      console.error('Error creating category:', error)
-      console.error('Error response:', error.response)
-      console.error('Error data:', error.response?.data)
-      
-      // Show more detailed error message
-      let errorMessage = 'Failed to create category'
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message
-      } else if (error.response?.data?.errors) {
-        // Show validation errors
-        const errors = error.response.data.errors
-        const firstError = Object.values(errors)[0]
-        errorMessage = Array.isArray(firstError) ? firstError[0] : firstError
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-      
-      toast.error(errorMessage)
-    }
-  }
-
-  const handleEditCategory = (category) => {
-    setEditingCategory(category)
-    // Get organization IDs from category.organizations if available
-    let organizationIds = category.organizations ? category.organizations.map(o => o.id) : []
-    
-    // For Editors, force organization to their organization
-    if (isEditor && user?.organization_id) {
-      organizationIds = [user.organization_id]
-    }
-    
-    // Ensure organizations are loaded when editing
-    if (organizations.length === 0 && !organizationsLoading) {
-      fetchOrganizations()
-    }
-    
-    setFormData({
-      name: category.name,
-      description: category.description || '',
-      is_active: category.is_active,
-      organization_ids: organizationIds,
-    })
-    setShowAddModal(true)
-  }
-
-  const handleToggleCategoryStatus = async (categoryId, newStatus) => {
-    // Optimistically update the UI
-    const category = categories.find(c => c.id === categoryId)
-    const originalStatus = category?.is_active
-    
-    // Update local state immediately
-    setCategories(prevCategories =>
-      prevCategories.map(cat =>
-        cat.id === categoryId ? { ...cat, is_active: newStatus } : cat
-      )
-    )
-
-    try {
-      const response = await apiClient.patch(
-        API_ENDPOINTS.STORY_CATEGORIES.TOGGLE_STATUS(categoryId)
-      )
-      if (response.data.success) {
-        toast.success(`Category ${newStatus ? 'activated' : 'deactivated'} successfully`)
-        fetchCategories() // Refresh to get server state
-        if (category) {
-          addActivity('edit', `${newStatus ? 'Activated' : 'Deactivated'} story category: ${category.name}`)
-        }
-      } else {
-        // Revert on failure
-        setCategories(prevCategories =>
-          prevCategories.map(cat =>
-            cat.id === categoryId ? { ...cat, is_active: originalStatus } : cat
-          )
-        )
-      }
-    } catch (error) {
-      console.error('Error toggling category status:', error)
-      // Revert on error
-      setCategories(prevCategories =>
-        prevCategories.map(cat =>
-          cat.id === categoryId ? { ...cat, is_active: originalStatus } : cat
-        )
-      )
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to update category status'
-      toast.error(errorMessage)
-    }
-  }
-
-  const handleUpdateCategory = async () => {
-    if (!editingCategory) return
-
-    try {
-      // For Editors, ensure organization_ids includes their organization
-      const payload = { ...formData }
-      if (isEditor && user?.organization_id) {
-        payload.organization_ids = [user.organization_id]
-      }
-      payload.user_id = user.id
-      
-      const response = await apiClient.put(
-        API_ENDPOINTS.STORY_CATEGORIES.UPDATE(editingCategory.id),
-        payload
-      )
-      if (response.data.success) {
-        toast.success('Category updated successfully')
-        setShowAddModal(false)
-        setEditingCategory(null)
-        setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
-        fetchCategories()
-        addActivity('edit', `Updated story category: ${formData.name}`)
-      }
-    } catch (error) {
-      console.error('Error updating category:', error)
-      toast.error(error.response?.data?.message || 'Failed to update category')
-    }
-  }
-
-  const handleDeleteCategory = async () => {
-    if (!deleteConfirm) return
-
-    try {
-      const response = await apiClient.delete(
-        API_ENDPOINTS.STORY_CATEGORIES.DELETE(deleteConfirm.id)
-      )
-      if (response.data.success) {
-        toast.success('Category deleted successfully')
-        setDeleteConfirm(null)
-        fetchCategories()
-        addActivity('delete', `Deleted story category: ${deleteConfirm.name}`)
-      }
-    } catch (error) {
-      console.error('Error deleting category:', error)
-      toast.error(error.response?.data?.message || 'Failed to delete category')
-    }
-  }
 
 
   const handleLogout = async () => {
@@ -458,10 +229,18 @@ function Stories() {
   // Story submission handlers (moved to top level)
   const handleStoryInputChange = (e) => {
     const { name, value } = e.target
-    setStoryFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
+    // Handle latitude and longitude as numbers
+    if (name === 'latitude' || name === 'longitude') {
+      setStoryFormData((prev) => ({
+        ...prev,
+        [name]: value === '' ? '' : parseFloat(value),
+      }))
+    } else {
+      setStoryFormData((prev) => ({
+        ...prev,
+        [name]: value,
+      }))
+    }
   }
 
   const handleSubmitStory = async () => {
@@ -495,6 +274,8 @@ function Stories() {
         panchayat_name: storyFormData.panchayat_name || null,
         village_id: storyFormData.village_id || null,
         village_name: storyFormData.village_name || null,
+        latitude: storyFormData.latitude || null,
+        longitude: storyFormData.longitude || null,
         content: storyFormData.content,
         user_id: user.id,
       })
@@ -524,6 +305,8 @@ function Stories() {
           panchayat_name: '',
           village_id: '',
           village_name: '',
+          latitude: '',
+          longitude: '',
           content: '' 
         })
         setShowSubmitForm(false)
@@ -568,6 +351,8 @@ function Stories() {
     panchayat_name: '',
     village_id: '',
     village_name: '',
+    latitude: '',
+    longitude: '',
     content: '',
     category_id: '',
   })
@@ -596,6 +381,20 @@ function Stories() {
           facilitator_organization: '',
           state: '',
           city: '',
+          state_id: '',
+          state_name: '',
+          district_id: '',
+          district_name: '',
+          sub_district_id: '',
+          sub_district_name: '',
+          block_id: '',
+          block_name: '',
+          panchayat_id: '',
+          panchayat_name: '',
+          village_id: '',
+          village_name: '',
+          latitude: '',
+          longitude: '',
           content: '', 
           category_id: '' 
         })
@@ -629,6 +428,32 @@ function Stories() {
     }
   }
 
+  const handleUnpublishStory = (story) => {
+    setUnpublishStoryConfirm(story)
+  }
+
+  const handleConfirmUnpublish = async () => {
+    if (!unpublishStoryConfirm) return
+    try {
+      const response = await apiClient.put(
+        API_ENDPOINTS.STORIES.UPDATE(unpublishStoryConfirm.id),
+        {
+          status: 'pending',
+          admin_user_id: user.id,
+        }
+      )
+      if (response.data.success) {
+        toast.success('Story unpublished successfully')
+        setUnpublishStoryConfirm(null)
+        fetchApprovedStories()
+        addActivity('update', `Unpublished story: ${unpublishStoryConfirm.title}`)
+      }
+    } catch (error) {
+      console.error('Error unpublishing story:', error)
+      toast.error(error.response?.data?.message || 'Failed to unpublish story')
+    }
+  }
+
   const getStatusBadge = (status) => {
     const badges = {
       pending: 'bg-yellow-100 text-yellow-800',
@@ -649,21 +474,9 @@ function Stories() {
       <Sidebar user={user} onLogout={handleLogout} />
       <main className="flex-1 transition-all duration-200 ease-in-out">
         <header className="bg-white shadow-sm sticky top-0 z-30">
-          <div className="px-4 sm:px-6 lg:px-8 py-4">
+          <div className="pl-14 sm:pl-14 lg:pl-8 pr-4 sm:pr-6 lg:pr-8 py-4">
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-bold text-gray-900">Stories</h1>
-              {canManage && activeTab === 'categories' && (
-                <button
-                  onClick={() => {
-                    setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
-                    setShowAddModal(true)
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  <FaPlus /> Add Category
-                </button>
-              )}
             </div>
           </div>
         </header>
@@ -676,7 +489,7 @@ function Stories() {
               <button
                 onClick={() => {
                   setActiveTab('submit-story')
-                  if (!categories.length && !categoriesLoading) {
+                  if (!categories.length) {
                     fetchWriterCategories()
                   }
                 }}
@@ -702,33 +515,21 @@ function Stories() {
               >
                 My Stories
               </button>
-              {/* Categories and Approved Stories tabs - Only for users with manage permission */}
+              {/* Approved Stories tab - Only for users with manage permission */}
               {canManage && (
-                <>
-                  <button
-                    onClick={() => setActiveTab('categories')}
-                    className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                      activeTab === 'categories'
-                        ? 'border-slate-700 text-slate-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Categories
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveTab('approved-stories')
-                      fetchApprovedStories()
-                    }}
-                    className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                      activeTab === 'approved-stories'
-                        ? 'border-slate-700 text-slate-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Approved Stories
-                  </button>
-                </>
+                <button
+                  onClick={() => {
+                    setActiveTab('approved-stories')
+                    fetchApprovedStories()
+                  }}
+                  className={`px-4 py-3 font-medium border-b-2 transition-colors ${
+                    activeTab === 'approved-stories'
+                      ? 'border-slate-700 text-slate-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Approved Stories
+                </button>
               )}
             </div>
           </div>
@@ -737,7 +538,7 @@ function Stories() {
         <div className="px-4 sm:px-6 lg:px-8 py-8">
           {/* Submit Story Tab - Available to all users */}
           {activeTab === 'submit-story' && (
-            showSubmitForm ? (
+            false && showSubmitForm ? (
                 <div className="bg-white rounded-lg shadow p-6">
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-xl font-semibold text-gray-800">
@@ -770,6 +571,8 @@ function Stories() {
                           panchayat_name: '',
                           village_id: '',
                           village_name: '',
+                          latitude: '',
+                          longitude: '',
                           content: '' 
                         })
                         setSelectedCategory(null)
@@ -1007,6 +810,46 @@ function Stories() {
                     </div>
 
                     <div>
+                      <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-800">
+                          <strong>Note:</strong> If you enter latitude and longitude, the map will use these exact coordinates for pinpoint mapping. If left empty, the map will use the state center coordinates.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Latitude
+                          </label>
+                          <input
+                            type="number"
+                            name="latitude"
+                            value={storyFormData.latitude}
+                            onChange={handleStoryInputChange}
+                            step="any"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                            placeholder="e.g., 28.6139"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Optional: Exact latitude for map pin</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Longitude
+                          </label>
+                          <input
+                            type="number"
+                            name="longitude"
+                            value={storyFormData.longitude}
+                            onChange={handleStoryInputChange}
+                            step="any"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                            placeholder="e.g., 77.2090"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Optional: Exact longitude for map pin</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Content *
                       </label>
@@ -1042,6 +885,22 @@ function Stories() {
                             person_location: '',
                             facilitator_name: '',
                             facilitator_organization: '',
+                            state: '',
+                            city: '',
+                            state_id: '',
+                            state_name: '',
+                            district_id: '',
+                            district_name: '',
+                            sub_district_id: '',
+                            sub_district_name: '',
+                            block_id: '',
+                            block_name: '',
+                            panchayat_id: '',
+                            panchayat_name: '',
+                            village_id: '',
+                            village_name: '',
+                            latitude: '',
+                            longitude: '',
                             description: '',
                             content: '' 
                           })
@@ -1059,9 +918,7 @@ function Stories() {
                   <h2 className="text-xl font-semibold text-gray-800 mb-4">
                     Available Categories
                   </h2>
-                  {categoriesLoading ? (
-                    <p className="text-gray-500">Loading categories...</p>
-                  ) : categories.length === 0 ? (
+                  {categories.length === 0 ? (
                     <p className="text-gray-500">
                       No categories available. Contact your administrator.
                     </p>
@@ -1090,7 +947,7 @@ function Stories() {
                                 ...prev,
                                 category_id: category.id,
                               }))
-                              setShowSubmitForm(true)
+                              navigate('/dashboard/stories/new')
                             }}
                             className="text-sm text-slate-600 hover:text-slate-800 font-medium"
                           >
@@ -1168,16 +1025,16 @@ function Stories() {
             </div>
           )}
 
-          {/* Categories Tab - Only for users with manage permission */}
-          {activeTab === 'categories' && canManage && (
-            <div className="bg-white rounded-lg shadow">
-              {categoriesLoading ? (
+          {/* Approved Stories Tab - Only for users with manage permission */}
+          {activeTab === 'approved-stories' && canManage && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              {approvedStoriesLoading ? (
                 <div className="p-8 text-center text-gray-500">
-                  Loading categories...
+                  Loading approved stories...
                 </div>
-              ) : categories.length === 0 ? (
+              ) : approvedStories.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
-                  No categories yet. Create your first category!
+                  No approved stories found.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1185,16 +1042,19 @@ function Stories() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Name
+                          Title
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Description
+                          Author
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Organizations
+                          Category
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
+                          Location
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Published
                         </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
@@ -1202,64 +1062,69 @@ function Stories() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {categories.map((category) => (
-                        <tr key={category.id} className="hover:bg-gray-50">
+                      {approvedStories.map((story) => (
+                        <tr key={story.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {story.title}
+                            </div>
+                            {story.subtitle && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {story.subtitle}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <FaFolder className="text-slate-600" />
-                              <span className="font-medium text-gray-900">
-                                {category.name}
-                              </span>
+                            <div className="text-sm text-gray-900">
+                              {story.author_name}
                             </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-500">
-                              {category.description || '—'}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {story.category_name}
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex flex-wrap gap-1">
-                              {category.organizations && category.organizations.length > 0 ? (
-                                category.organizations.map((org) => (
-                                  <span
-                                    key={org.id}
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
-                                  >
-                                    {org.name}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-gray-400 text-sm">—</span>
-                              )}
+                            <div className="text-sm text-gray-500">
+                              {[story.village_name, story.panchayat_name, story.block_name, story.district_name, story.state_name].filter(Boolean).join(', ') || <span className="text-gray-400">—</span>}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <label className="relative inline-flex items-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={category.is_active || false}
-                                onChange={(e) => {
-                                  e.stopPropagation()
-                                  handleToggleCategoryStatus(category.id, !category.is_active)
-                                }}
-                                className="sr-only peer"
-                              />
-                              <div className="w-11 h-6 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 bg-red-600"></div>
-                            </label>
+                          <td className="px-6 py-4">
+                            {story.published_at ? (
+                              <div className="text-sm text-gray-900">
+                                <div>{formatDateShort(story.published_at)}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {new Date(story.published_at).toLocaleTimeString('en-IN', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    timeZone: 'Asia/Kolkata',
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={() => handleEditCategory(category)}
-                                className="text-slate-600 hover:text-slate-800 p-2"
-                                title="Edit"
+                                onClick={() => navigate(`/dashboard/stories/${story.id}/edit`)}
+                                className="text-blue-600 hover:text-blue-900"
+                                title="Edit Story"
                               >
                                 <FaEdit />
                               </button>
                               <button
-                                onClick={() => setDeleteConfirm(category)}
-                                className="text-red-600 hover:text-red-800 p-2"
-                                title="Delete"
+                                onClick={() => handleUnpublishStory(story)}
+                                className="text-orange-600 hover:text-orange-900"
+                                title="Unpublish Story"
+                              >
+                                <FaBan />
+                              </button>
+                              <button
+                                onClick={() => setDeleteStoryConfirm(story)}
+                                className="text-red-600 hover:text-red-900"
+                                title="Delete Story"
                               >
                                 <FaTrash />
                               </button>
@@ -1273,204 +1138,11 @@ function Stories() {
               )}
             </div>
           )}
-
-
-          {/* Approved Stories Tab - Only for users with manage permission */}
-          {activeTab === 'approved-stories' && canManage && (
-            <div className="bg-white rounded-lg shadow">
-              {approvedStoriesLoading ? (
-                <div className="p-8 text-center text-gray-500">
-                  Loading approved stories...
-                </div>
-              ) : approvedStories.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  No approved stories found.
-                </div>
-              ) : (
-                <div className="space-y-4 p-6">
-                  {approvedStories.map((story) => (
-                    <div
-                      key={story.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-gray-900">
-                              {story.title}
-                            </h3>
-                            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
-                              Published
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-2">
-                            <div className="flex items-center gap-1">
-                              <FaUsers className="text-gray-400" />
-                              <span>{story.author_name}</span>
-                              <span className="text-gray-400">({story.author_email})</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <FaFolder className="text-gray-400" />
-                              <span>{story.category_name}</span>
-                            </div>
-                            {story.approver_name && (
-                              <div className="flex items-center gap-1">
-                                <FaCheck className="text-gray-400" />
-                                <span>Approved by {story.approver_name}</span>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-1">
-                              <FaClock className="text-gray-400" />
-                              <span>Published {formatDateTime(story.published_at)}</span>
-                            </div>
-                          </div>
-                          <p className="text-gray-700 mt-2 line-clamp-3">{story.content}</p>
-                          
-                          {/* Read More Section - Expandable for full story details */}
-                          {expandedStories.has(story.id) ? (
-                            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                              <h4 className="font-semibold text-gray-900 mb-3">Full Story Details</h4>
-                              <div className="space-y-3 text-sm">
-                                {story.subtitle && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Subtitle:</span>
-                                    <p className="text-gray-600 mt-1">{story.subtitle}</p>
-                                  </div>
-                                )}
-                                {story.photo_url && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Photo:</span>
-                                    <div className="mt-2">
-                                      <img 
-                                        src={story.photo_url} 
-                                        alt={story.person_name || story.title || 'Story photo'} 
-                                        className="max-w-md h-auto rounded-lg border border-gray-300"
-                                        onError={(e) => {
-                                          e.target.style.display = 'none'
-                                          if (e.target.nextSibling) {
-                                            e.target.nextSibling.style.display = 'block'
-                                          }
-                                        }}
-                                      />
-                                      <p className="text-gray-500 text-xs mt-1 break-all hidden">{story.photo_url}</p>
-                                    </div>
-                                  </div>
-                                )}
-                                {story.quote && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Quote:</span>
-                                    <p className="text-gray-600 mt-1 italic">"{story.quote}"</p>
-                                  </div>
-                                )}
-                                {(story.person_name || story.person_location) && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Person:</span>
-                                    <p className="text-gray-600 mt-1">
-                                      {story.person_name}
-                                      {story.person_location && ` - ${story.person_location}`}
-                                    </p>
-                                  </div>
-                                )}
-                                {(story.facilitator_name || story.facilitator_organization) && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Facilitator:</span>
-                                    <p className="text-gray-600 mt-1">
-                                      {story.facilitator_name}
-                                      {story.facilitator_organization && ` - ${story.facilitator_organization}`}
-                                    </p>
-                                  </div>
-                                )}
-                                {(story.village_name || story.panchayat_name || story.block_name || story.district_name || story.state_name) && (
-                                  <div>
-                                    <span className="font-medium text-gray-700">Location:</span>
-                                    <p className="text-gray-600 mt-1">
-                                      {[story.village_name, story.panchayat_name, story.block_name, story.district_name, story.state_name].filter(Boolean).join(', ')}
-                                    </p>
-                                  </div>
-                                )}
-                                <div>
-                                  <span className="font-medium text-gray-700">Content:</span>
-                                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{story.content}</p>
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setExpandedStories(prev => {
-                                    const newSet = new Set(prev)
-                                    newSet.delete(story.id)
-                                    return newSet
-                                  })
-                                }}
-                                className="mt-4 text-sm text-slate-600 hover:text-slate-800 font-medium"
-                              >
-                                Read Less ↑
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setExpandedStories(prev => new Set(prev).add(story.id))
-                              }}
-                              className="mt-2 text-sm text-slate-600 hover:text-slate-800 font-medium"
-                            >
-                              Read More ↓
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex gap-2 ml-4">
-                          <button
-                            onClick={() => {
-                              setEditingStory(story)
-                              setEditStoryForm({
-                                title: story.title || '',
-                                subtitle: story.subtitle || '',
-                                photo_url: story.photo_url || '',
-                                quote: story.quote || '',
-                                person_name: story.person_name || '',
-                                person_location: story.person_location || '',
-                                facilitator_name: story.facilitator_name || '',
-                                facilitator_organization: story.facilitator_organization || '',
-                                state_id: story.state_id || '',
-                                state_name: story.state_name || '',
-                                district_id: story.district_id || '',
-                                district_name: story.district_name || '',
-                                sub_district_id: story.sub_district_id || '',
-                                sub_district_name: story.sub_district_name || '',
-                                block_id: story.block_id || '',
-                                block_name: story.block_name || '',
-                                panchayat_id: story.panchayat_id || '',
-                                panchayat_name: story.panchayat_name || '',
-                                village_id: story.village_id || '',
-                                village_name: story.village_name || '',
-                                content: story.content || '',
-                                category_id: story.category_id || '',
-                              })
-                            }}
-                            className="p-2 text-slate-600 hover:bg-slate-100 rounded transition-colors"
-                            title="Edit"
-                          >
-                            <FaEdit />
-                          </button>
-                          <button
-                            onClick={() => setDeleteStoryConfirm(story)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Delete"
-                          >
-                            <FaTrash />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </main>
 
-      {/* Edit Story Modal */}
-      {editingStory && (
+      {/* Edit Story Modal - Removed: Now using StoryForm page */}
+      {false && editingStory && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
             <div className="p-6">
@@ -1502,6 +1174,8 @@ function Stories() {
           panchayat_name: '',
           village_id: '',
           village_name: '',
+          latitude: '',
+          longitude: '',
           content: '', 
           category_id: '' 
         })
@@ -1736,6 +1410,47 @@ function Stories() {
                   />
                 </div>
                 <div>
+                  <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-800">
+                      <strong>Note:</strong> If you enter latitude and longitude, the map will use these exact coordinates for pinpoint mapping. If left empty, the map will use the state center coordinates.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Latitude
+                      </label>
+                      <input
+                        type="number"
+                        value={editStoryForm.latitude}
+                        onChange={(e) =>
+                          setEditStoryForm((prev) => ({ ...prev, latitude: e.target.value }))
+                        }
+                        step="any"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                        placeholder="e.g., 28.6139"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Optional: Exact latitude for map pin</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Longitude
+                      </label>
+                      <input
+                        type="number"
+                        value={editStoryForm.longitude}
+                        onChange={(e) =>
+                          setEditStoryForm((prev) => ({ ...prev, longitude: e.target.value }))
+                        }
+                        step="any"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
+                        placeholder="e.g., 77.2090"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Optional: Exact longitude for map pin</p>
+                    </div>
+                  </div>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Content *
                   </label>
@@ -1830,197 +1545,26 @@ function Stories() {
         </div>
       )}
 
-      {/* Add/Edit Category Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {editingCategory ? 'Edit Category' : 'Add Category'}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowAddModal(false)
-                    setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <FaTimes />
-                </button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
-                    placeholder="Category name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    rows="3"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-600 focus:border-transparent"
-                    placeholder="Category description"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assign to Organizations
-                  </label>
-                  <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                    {organizationsLoading ? (
-                      <p className="text-sm text-gray-500">Loading organizations...</p>
-                    ) : organizations.length === 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-sm text-gray-500">No organizations available</p>
-                        <button
-                          type="button"
-                          onClick={() => fetchOrganizations()}
-                          className="text-xs text-blue-600 hover:text-blue-800 underline"
-                        >
-                          Click to load organizations
-                        </button>
-                      </div>
-                    ) : isEditor && user?.organization_id && organizations.find(o => o.id === user.organization_id) ? (
-                      // Editor view: Show organization name clearly
-                      <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={true}
-                            disabled
-                            readOnly
-                            className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600 cursor-not-allowed opacity-60"
-                          />
-                          <span className="text-sm text-gray-700 font-medium">
-                            {organizations.find(o => o.id === user.organization_id).name}
-                          </span>
-                          <span className="text-xs text-gray-500">(Your Organization)</span>
-                        </div>
-                      </div>
-                    ) : !isEditor ? (
-                      // Super Admin view: Show all organizations with checkboxes
-                      <div className="space-y-2">
-                        {organizations
-                          .filter(org => org.is_active)
-                          .map((org) => {
-                            const isChecked = formData.organization_ids.includes(org.id)
-                            
-                            return (
-                              <label
-                                key={org.id}
-                                className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        organization_ids: [...prev.organization_ids, org.id],
-                                      }))
-                                    } else {
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        organization_ids: prev.organization_ids.filter(
-                                          (id) => id !== org.id
-                                        ),
-                                      }))
-                                    }
-                                  }}
-                                  className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600"
-                                />
-                                <span className="text-sm text-gray-700">{org.name}</span>
-                              </label>
-                            )
-                          })}
-                      </div>
-                    ) : null
-                  }
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {isEditor 
-                      ? 'As an Editor, you can only create categories for your assigned organization. This field is read-only for your organization.'
-                      : 'Writers from selected organizations will automatically get access to this category'
-                    }
-                  </p>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    name="is_active"
-                    checked={formData.is_active}
-                    onChange={handleInputChange}
-                    className="w-4 h-4 text-slate-600 border-gray-300 rounded focus:ring-slate-600"
-                  />
-                  <label className="ml-2 text-sm text-gray-700">
-                    Active
-                  </label>
-                </div>
-              </div>
-              <div className="flex gap-2 mt-6">
-                <button
-                  onClick={
-                    editingCategory ? handleUpdateCategory : handleAddCategory
-                  }
-                  disabled={creating || updating || !formData.name.trim()}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <FaCheck />
-                  {editingCategory ? 'Update' : 'Create'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAddModal(false)
-                    setEditingCategory(null)
-                    setFormData({ name: '', description: '', is_active: true, organization_ids: [] })
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
+      {/* Unpublish Story Confirmation Modal */}
+      {unpublishStoryConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Delete Category
+                Unpublish Story
               </h2>
               <p className="text-gray-600 mb-6">
-                Are you sure you want to delete "{deleteConfirm.name}"? This
-                action cannot be undone.
+                Are you sure you want to unpublish "{unpublishStoryConfirm.title}"? The story will be moved back to pending status for review.
               </p>
               <div className="flex gap-2">
                 <button
-                  onClick={handleDeleteCategory}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  onClick={handleConfirmUnpublish}
+                  className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
                 >
-                  Delete
+                  Unpublish
                 </button>
                 <button
-                  onClick={() => setDeleteConfirm(null)}
+                  onClick={() => setUnpublishStoryConfirm(null)}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
@@ -2030,6 +1574,7 @@ function Stories() {
           </div>
         </div>
       )}
+
 
     </div>
   )

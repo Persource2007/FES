@@ -21,8 +21,8 @@ class StoryCategoryController extends Controller
 {
     /**
      * Get all story categories
+     * Categories are organization-independent and available to all users
      * Public access: Returns only active categories
-     * Editors: Can only see active categories for their organization's region
      * Super admins: Can see all categories (including inactive)
      * 
      * @return JsonResponse
@@ -84,16 +84,8 @@ class StoryCategoryController extends Controller
                         ->first();
 
                     $isSuperAdmin = $userRole && $userRole->role_name === 'Super admin';
-                    $isEditor = $userRole && $userRole->role_name === 'Editor';
 
-                    if ($isEditor && $user->organization_id) {
-                        // Editors see only active categories assigned to their organization
-                        $query->where('is_active', true)
-                            ->join('category_organizations', 'story_categories.id', '=', 'category_organizations.category_id')
-                            ->where('category_organizations.organization_id', $user->organization_id)
-                            ->select('story_categories.*')
-                            ->distinct();
-                    } elseif (!$isSuperAdmin) {
+                    if (!$isSuperAdmin) {
                         // Non-super-admin authenticated users see only active categories
                         $query->where('is_active', true);
                     }
@@ -149,7 +141,7 @@ class StoryCategoryController extends Controller
 
     /**
      * Create a new story category
-     * Editors can only create categories for their organization's region
+     * Categories are organization-independent and available to all users
      * 
      * @param Request $request
      * @return JsonResponse
@@ -157,33 +149,11 @@ class StoryCategoryController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            // Get user making the request
-            $userId = $request->input('user_id');
-            $user = $userId ? User::find($userId) : null;
-
-            // Check if user is Editor
-            $isEditor = false;
-            $userOrganization = null;
-            if ($user) {
-                $userRole = DB::table('roles')
-                    ->where('id', $user->role_id)
-                    ->first();
-                $isEditor = $userRole && $userRole->role_name === 'Editor';
-
-                if ($isEditor && $user->organization_id) {
-                    $userOrganization = DB::table('organizations')
-                        ->where('id', $user->organization_id)
-                        ->first();
-                }
-            }
-
             // Validate request
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255|unique:story_categories,name',
                 'description' => 'nullable|string',
                 'is_active' => 'nullable|boolean',
-                'organization_ids' => 'nullable|array',
-                'organization_ids.*' => 'exists:organizations,id',
             ]);
 
             if ($validator->fails()) {
@@ -194,37 +164,12 @@ class StoryCategoryController extends Controller
                 ], 400);
             }
 
-            // For Editors, restrict to their organization
-            $organizationIds = $request->has('organization_ids') && is_array($request->organization_ids) 
-                ? $request->organization_ids 
-                : [];
-
-            if ($isEditor) {
-                if (!$userOrganization) {
-                    return $this->errorResponse('You must belong to an organization to create categories', 403);
-                }
-
-                // Force organization_ids to only include the editor's organization
-                $organizationIds = [$userOrganization->id];
-            }
-
-            // Create category
+            // Create category (organization-independent)
             $category = StoryCategory::create([
                 'name' => $request->name,
                 'description' => $request->description ?? null,
                 'is_active' => $request->is_active ?? true,
             ]);
-
-            // Assign organizations
-            if (!empty($organizationIds)) {
-                $category->organizations()->sync($organizationIds);
-                
-                // Automatically grant access to all writers in assigned organizations
-                $this->syncOrganizationBasedAccess($category);
-            }
-
-            // Load organizations relationship
-            $category->load('organizations');
 
             return $this->successResponse([
                 'message' => 'Story category created successfully',
@@ -251,6 +196,7 @@ class StoryCategoryController extends Controller
 
     /**
      * Update a story category
+     * Categories are organization-independent
      * 
      * @param Request $request
      * @param int $id
@@ -265,47 +211,11 @@ class StoryCategoryController extends Controller
                 return $this->errorResponse('Story category not found', 404);
             }
 
-            // Get user making the request
-            $userId = $request->input('user_id');
-            $user = $userId ? User::find($userId) : null;
-
-            // Check if user is Editor
-            $isEditor = false;
-            $userOrganization = null;
-            if ($user) {
-                $userRole = DB::table('roles')
-                    ->where('id', $user->role_id)
-                    ->first();
-                $isEditor = $userRole && $userRole->role_name === 'Editor';
-
-                if ($isEditor) {
-                    if (!$user->organization_id) {
-                        return $this->errorResponse('You must belong to an organization to edit categories', 403);
-                    }
-
-                    $userOrganization = DB::table('organizations')
-                        ->where('id', $user->organization_id)
-                        ->first();
-
-                    if (!$userOrganization || !$userOrganization->region_id) {
-                        return $this->errorResponse('Your organization must have a region to edit categories', 403);
-                    }
-
-                    // Check if category belongs to editor's organization
-                    $categoryOrganizations = $category->organizations()->pluck('organizations.id')->toArray();
-                    if (!in_array($userOrganization->id, $categoryOrganizations)) {
-                        return $this->errorResponse('You can only edit categories from your organization', 403);
-                    }
-                }
-            }
-
             // Validate request
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255|unique:story_categories,name,' . $id,
                 'description' => 'nullable|string',
                 'is_active' => 'nullable|boolean',
-                'organization_ids' => 'nullable|array',
-                'organization_ids.*' => 'exists:organizations,id',
             ]);
 
             if ($validator->fails()) {
@@ -323,25 +233,6 @@ class StoryCategoryController extends Controller
                 $category->is_active = $request->is_active;
             }
             $category->save();
-
-            // Update organizations if provided
-            // For Editors, prevent changing organization assignment
-            if ($request->has('organization_ids')) {
-                $organizationIds = is_array($request->organization_ids) ? $request->organization_ids : [];
-                
-                // For Editors, force organization to their organization
-                if ($isEditor && $userOrganization) {
-                    $organizationIds = [$userOrganization->id];
-                }
-                
-                $category->organizations()->sync($organizationIds);
-                
-                // Automatically grant access to all writers in assigned organizations
-                $this->syncOrganizationBasedAccess($category);
-            }
-
-            // Load organizations relationship
-            $category->load('organizations');
 
             return $this->successResponse([
                 'message' => 'Story category updated successfully',
@@ -414,7 +305,7 @@ class StoryCategoryController extends Controller
                 return $this->errorResponse('Story category not found', 404);
             }
 
-            // Delete category (cascade will handle category_organizations and category_regions)
+            // Delete category
             $category->delete();
 
             return $this->successResponse([
@@ -479,34 +370,9 @@ class StoryCategoryController extends Controller
             //     return $this->errorResponse('User does not have permission to post stories', 403);
             // }
 
-            // Get categories accessible by this writer
-            // Writers can ONLY access categories explicitly assigned to their organization
-            // This ensures strict organization-based access control
-            
-            if (!$user->organization_id) {
-                // If user has no organization, they can't access any categories
-                return $this->successResponse([
-                    'categories' => [],
-                ]);
-            }
-            
-            // Get categories assigned to writer's organization ONLY
-            $accessibleCategoryIds = DB::table('category_organizations')
-                ->where('organization_id', $user->organization_id)
-                ->pluck('category_id')
-                ->toArray();
-
-            // If no categories are accessible, return empty array
-            if (empty($accessibleCategoryIds)) {
-                return $this->successResponse([
-                    'categories' => [],
-                ]);
-            }
-
-            // Get the actual category details
+            // Get all active categories (categories are now organization-independent)
             $categories = DB::table('story_categories')
                 ->where('story_categories.is_active', true)
-                ->whereIn('story_categories.id', $accessibleCategoryIds)
                 ->select(
                     'story_categories.id',
                     'story_categories.name',
@@ -579,18 +445,8 @@ class StoryCategoryController extends Controller
                 return $this->errorResponse('User does not have permission to post stories', 403);
             }
 
-            // Writer access is now managed through category_organizations table
-            // Writers get access to categories assigned to their organization
-            // This method is deprecated - use category_organizations instead
-            
-            if (!$user->organization_id) {
-                return $this->errorResponse('User must belong to an organization to have category access', 400);
-            }
-
-            // Get categories assigned to user's organization
+            // Categories are now organization-independent - all active categories are available to all users
             $categories = DB::table('story_categories')
-                ->join('category_organizations', 'story_categories.id', '=', 'category_organizations.category_id')
-                ->where('category_organizations.organization_id', $user->organization_id)
                 ->where('story_categories.is_active', true)
                 ->select(
                     'story_categories.id',
@@ -604,7 +460,7 @@ class StoryCategoryController extends Controller
                 ->get();
 
             return $this->successResponse([
-                'message' => 'Writer access is managed through organization assignments. Showing categories for user\'s organization.',
+                'message' => 'Categories are organization-independent. All active categories are available.',
                 'categories' => $categories,
             ]);
         } catch (\Exception $e) {
@@ -649,23 +505,19 @@ class StoryCategoryController extends Controller
 
             $writers = $writersQuery->orderBy('users.name', 'asc')->get();
 
-            // Get category access for each writer based on their organization
+            // Categories are now organization-independent - all active categories are available to all writers
+            $allCategories = DB::table('story_categories')
+                ->where('story_categories.is_active', true)
+                ->select(
+                    'story_categories.id',
+                    'story_categories.name',
+                    'story_categories.description'
+                )
+                ->get();
+
+            // Assign all active categories to each writer
             foreach ($writers as $writer) {
-                $writerObj = User::find($writer->id);
-                if ($writerObj && $writerObj->organization_id) {
-                    $writer->categories = DB::table('story_categories')
-                        ->join('category_organizations', 'story_categories.id', '=', 'category_organizations.category_id')
-                        ->where('category_organizations.organization_id', $writerObj->organization_id)
-                        ->where('story_categories.is_active', true)
-                        ->select(
-                            'story_categories.id',
-                            'story_categories.name',
-                            'story_categories.description'
-                        )
-                        ->get();
-                } else {
-                    $writer->categories = [];
-                }
+                $writer->categories = $allCategories;
             }
 
             return $this->successResponse([

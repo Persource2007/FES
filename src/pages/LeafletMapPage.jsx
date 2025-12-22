@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { FaFilter, FaSearch, FaMapMarkerAlt } from 'react-icons/fa'
+import { FaFilter, FaSearch, FaMapMarkerAlt, FaTimes } from 'react-icons/fa'
 import { generateSlug } from '../utils/slug'
 import apiClient from '../utils/api'
 import { API_ENDPOINTS } from '../utils/constants'
@@ -10,12 +10,45 @@ import 'leaflet/dist/leaflet.css'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 
-// Hide Leaflet attribution
+// Hide Leaflet attribution and fix z-index for header dropdown
 if (typeof document !== 'undefined') {
   const style = document.createElement('style')
   style.textContent = `
     .leaflet-control-attribution {
       display: none !important;
+    }
+    .leaflet-container {
+      z-index: 1 !important;
+      height: 100% !important;
+      width: 100% !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      display: block !important;
+      background-color: #f0f0f0 !important;
+      touch-action: none !important;
+    }
+    .leaflet-touch .leaflet-control-layers,
+    .leaflet-touch .leaflet-bar {
+      border: 2px solid rgba(0,0,0,0.2) !important;
+      background-clip: padding-box !important;
+    }
+    .leaflet-touch .leaflet-bar a {
+      width: 30px !important;
+      height: 30px !important;
+      line-height: 30px !important;
+    }
+    .leaflet-pane {
+      z-index: 1 !important;
+    }
+    .leaflet-top, .leaflet-bottom {
+      z-index: 2 !important;
+    }
+    .leaflet-map-pane {
+      height: 100% !important;
+      width: 100% !important;
     }
   `
   document.head.appendChild(style)
@@ -102,8 +135,8 @@ function LeafletMapPage() {
   // State for data
   const [stories, setStories] = useState([])
   const [categories, setCategories] = useState([])
-  const [regions, setRegions] = useState([])
   const [loading, setLoading] = useState(true)
+  const [worldBorders, setWorldBorders] = useState(null)
   
   // Filter state
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -113,13 +146,80 @@ function LeafletMapPage() {
   
   // Map ref
   const mapRef = useRef(null)
+  
+  // Tooltip state for custom tooltip like India SVG map
+  const [tooltip, setTooltip] = useState(null)
+  const mapContainerRef = useRef(null)
+  const [mapReady, setMapReady] = useState(false)
 
   // Fetch data on mount
   useEffect(() => {
     fetchStories()
     fetchCategories()
-    fetchRegions()
+    fetchWorldBorders()
   }, [])
+
+  // Fix map sizing on mobile after data loads and container becomes visible
+  useEffect(() => {
+    if (!loading && mapContainerRef.current) {
+      // Delay to ensure container is fully rendered and visible (especially on mobile)
+      const timer = setTimeout(() => {
+        // Check container dimensions
+        const rect = mapContainerRef.current.getBoundingClientRect()
+        console.log('Map container dimensions:', { width: rect.width, height: rect.height })
+        
+        // Ensure container has valid dimensions
+        if (rect.width > 0 && rect.height > 0) {
+          // Mark map as ready to render
+          setMapReady(true)
+          
+          // Trigger resize event to invalidate map size
+          window.dispatchEvent(new Event('resize'))
+          
+          // Also invalidate map directly if ref is available
+          if (mapRef.current && mapRef.current.leafletElement) {
+            mapRef.current.leafletElement.invalidateSize()
+            console.log('Map size invalidated after container check')
+          }
+        } else {
+          console.warn('Map container has invalid dimensions:', rect)
+          // Retry after a longer delay
+          setTimeout(() => {
+            const retryRect = mapContainerRef.current?.getBoundingClientRect()
+            if (retryRect && retryRect.width > 0 && retryRect.height > 0) {
+              setMapReady(true)
+            }
+          }, 1000)
+        }
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [loading])
+
+  // Fetch world country borders from a reliable source
+  const fetchWorldBorders = async () => {
+    try {
+      // Using Natural Earth data via GitHub
+      const response = await fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+      if (response.ok) {
+        const data = await response.json()
+        // Filter out India, neighboring countries, and disputed territories
+        // Filter out India, neighboring countries, and disputed territories
+        const excludeCountries = ['india', 'pakistan', 'china', 'nepal', 'bangladesh', 'myanmar', 'bhutan', 'siachen', 'aksai', 'kashmir', 'jammu', 'arunachal', 'tibet', 'sri lanka']
+        const filteredData = {
+          ...data,
+          features: data.features.filter(f => {
+            const props = f.properties || {}
+            const name = (props.ADMIN || props.name || props.NAME || props.SOVEREIGNT || props.sovereignt || '').toLowerCase()
+            return !excludeCountries.some(country => name.includes(country))
+          })
+        }
+        setWorldBorders(filteredData)
+      }
+    } catch (error) {
+      console.warn('Error fetching world borders:', error)
+    }
+  }
 
   const fetchStories = async () => {
     try {
@@ -146,17 +246,6 @@ function LeafletMapPage() {
     }
   }
 
-  const fetchRegions = async () => {
-    try {
-      const response = await apiClient.get(API_ENDPOINTS.REGIONS.LIST)
-      if (response.data.success) {
-        setRegions(response.data.regions || [])
-      }
-    } catch (error) {
-      console.error('Error fetching regions:', error)
-    }
-  }
-
   // Get unique states from stories for the filter dropdown
   const uniqueStates = [...new Set(stories.filter(s => s.state_name).map(s => s.state_name))].sort()
 
@@ -177,59 +266,52 @@ function LeafletMapPage() {
     setSearchQuery(searchInput)
   }
 
-  // Group stories by state for map markers
-  const storiesByRegion = filteredStories.reduce((acc, story) => {
-    if (story.state_name) {
-      if (!acc[story.state_name]) {
-        acc[story.state_name] = []
-      }
-      acc[story.state_name].push(story)
-    }
-    return acc
-  }, {})
-
   // Removed auto-zoom functionality - user can manually zoom/pan the map
-
-  // Handle state click on map
-  const handleStateClick = (stateName) => {
-    setSelectedRegion(stateName)
-  }
-
-  // Handle story click - navigate directly to story detail page
-  const handleStoryClick = (story) => {
-    const slug = story.slug || generateSlug(story.title)
-    navigate(`/stories/${slug}`)
-  }
 
   // Create GeoJSON features for stories
   const createGeoJSONFeatures = () => {
     const features = []
     
-    Object.entries(storiesByRegion).forEach(([stateName, stateStories]) => {
-      const coords = STATE_COORDINATES[stateName]
-      if (!coords) return
+    // Use story-specific lat/long if available, otherwise fall back to state center
+    filteredStories.forEach((story) => {
+      let lat, lon
       
-      // Create a feature for each story in the state
-      stateStories.forEach((story, index) => {
-        // Offset markers slightly to avoid overlap
-        const offset = index * 0.01
-        const [lat, lon] = coords
-        
+      // Check if story has specific latitude and longitude
+      if (story.latitude && story.longitude) {
+        lat = parseFloat(story.latitude)
+        lon = parseFloat(story.longitude)
+      } else if (story.state_name) {
+        // Fall back to state center if no specific coordinates
+        const coords = STATE_COORDINATES[story.state_name]
+        if (coords) {
+          [lat, lon] = coords
+        } else {
+          // Skip if no state coordinates available
+          return
+        }
+      } else {
+        // Skip if no location data at all
+        return
+      }
+      
+      // Only add feature if we have valid coordinates
+      if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
         features.push({
           type: 'Feature',
           properties: {
             storyId: story.id,
             title: story.title,
-            state: stateName,
+            state: story.state_name,
             category: story.category_name,
             slug: story.slug || generateSlug(story.title),
+            story: story, // Include full story data for tooltip
           },
           geometry: {
             type: 'Point',
-            coordinates: [lon + offset, lat + offset],
+            coordinates: [lon, lat], // GeoJSON format: [longitude, latitude]
           },
         })
-      })
+      }
     })
     
     return {
@@ -253,46 +335,103 @@ function LeafletMapPage() {
     })
   }
 
-  // Event handlers for GeoJSON
+  // Event handlers for GeoJSON - custom tooltip like India SVG map
   const onEachFeature = (feature, layer) => {
     if (feature.properties) {
-      const { title, state, category, slug } = feature.properties
-      
-      // Add popup
-      const popupContent = `
-        <div style="min-width: 200px;">
-          <h3 style="font-weight: bold; margin-bottom: 8px; font-size: 14px;">${title}</h3>
-          <div style="margin-bottom: 8px;">
-            ${category ? `<span style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-right: 4px;">${category}</span>` : ''}
-            ${state ? `<span style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${state}</span>` : ''}
-          </div>
-          <a href="/stories/${slug}" style="color: #059669; text-decoration: none; font-size: 12px; font-weight: 500;">Read more →</a>
-        </div>
-      `
-      layer.bindPopup(popupContent)
-      
-      // Add click handler
-      layer.on('click', () => {
-        const story = filteredStories.find(s => s.id === feature.properties.storyId)
-        if (story) {
-          handleStoryClick(story)
+      // Add click handler to show custom tooltip
+      layer.on('click', (e) => {
+        L.DomEvent.stopPropagation(e)
+        const story = feature.properties.story
+        if (story && mapContainerRef.current) {
+          const containerRect = mapContainerRef.current.getBoundingClientRect()
+          const x = e.originalEvent.clientX - containerRect.left
+          const y = e.originalEvent.clientY - containerRect.top
+          setTooltip({ story, x, y })
         }
       })
     }
+  }
+  
+  // Component to handle map events for closing tooltip
+  const MapEventHandler = () => {
+    const map = useMap()
+    useEffect(() => {
+      const handleMapEvent = () => setTooltip(null)
+      map.on('click', handleMapEvent)
+      map.on('zoomstart', handleMapEvent)
+      map.on('movestart', handleMapEvent)
+      return () => {
+        map.off('click', handleMapEvent)
+        map.off('zoomstart', handleMapEvent)
+        map.off('movestart', handleMapEvent)
+      }
+    }, [map])
+    return null
+  }
+
+  // Component to handle map resize and invalidation (fixes mobile loading issues)
+  const MapResizeHandler = () => {
+    const map = useMap()
+    useEffect(() => {
+      // Invalidate size when component mounts (fixes mobile loading)
+      // Use longer delay to ensure container is fully rendered, especially on mobile
+      const timer = setTimeout(() => {
+        const container = map.getContainer()
+        const size = map.getSize()
+        console.log('MapResizeHandler: Container info', {
+          containerWidth: container.offsetWidth,
+          containerHeight: container.offsetHeight,
+          mapSize: size,
+          viewport: map.getSize(),
+        })
+        
+        map.invalidateSize()
+        console.log('MapResizeHandler: Map size invalidated')
+        
+        // Double-check and invalidate again after a short delay (mobile fix)
+        setTimeout(() => {
+          map.invalidateSize()
+          const newSize = map.getSize()
+          console.log('MapResizeHandler: Map size invalidated (retry), new size:', newSize)
+        }, 200)
+      }, 500)
+
+      // Handle window resize
+      const handleResize = () => {
+        map.invalidateSize()
+      }
+      window.addEventListener('resize', handleResize)
+
+      // Handle orientation change on mobile
+      const handleOrientationChange = () => {
+        setTimeout(() => {
+          map.invalidateSize()
+          console.log('MapResizeHandler: Orientation changed, size invalidated')
+        }, 500)
+      }
+      window.addEventListener('orientationchange', handleOrientationChange)
+
+      return () => {
+        clearTimeout(timer)
+        window.removeEventListener('resize', handleResize)
+        window.removeEventListener('orientationchange', handleOrientationChange)
+      }
+    }, [map])
+    return null
   }
 
   const geoJSONData = createGeoJSONFeatures()
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white flex flex-col">
       <Header />
-      
+      <main className="flex-1">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="w-full">
           <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
-        <div className="flex flex-col lg:flex-row">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-0" style={{ minHeight: '400px' }}>
           {/* Filter Controls - Left Side */}
-          <div className="w-full lg:w-80 xl:w-96 bg-white border-r border-gray-300 flex flex-col max-h-[700px]">
+          <div className="w-full lg:w-80 xl:w-96 bg-white border border-gray-300 lg:border-r lg:border-b-0 border-b flex flex-col max-h-[500px] lg:max-h-[700px]">
             {/* Filters Section - Compact */}
             <div className="p-4 border-b border-gray-300 flex-shrink-0">
               <form onSubmit={handleSearch} className="space-y-3">
@@ -450,29 +589,118 @@ function LeafletMapPage() {
           </div>
 
           {/* Map - Right Side */}
-          <div className="flex-1 relative h-96 lg:h-[700px]">
+          <div 
+            className="flex-1 relative w-full h-[400px] sm:h-[500px] lg:h-[700px] min-h-[400px]" 
+            ref={mapContainerRef}
+            style={{ touchAction: 'none' }}
+          >
             {loading ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700 mx-auto mb-4"></div>
                   <p className="text-gray-700">Loading map...</p>
                 </div>
               </div>
+            ) : !mapReady ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700 mx-auto mb-4"></div>
+                  <p className="text-gray-700">Initializing map...</p>
+                </div>
+              </div>
             ) : (
               <MapContainer
+                key="leaflet-map"
                 center={[22.0, 78.9629]} // Adjusted center to show all of India including Kashmir and Kanyakumari
                 zoom={4.5}
                 minZoom={4}
                 maxZoom={19}
-                style={{ height: '100%', width: '100%' }}
+                style={{ 
+                  height: '100%', 
+                  width: '100%', 
+                  display: 'block', 
+                  touchAction: 'none',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0
+                }}
                 ref={mapRef}
                 attributionControl={false}
+                scrollWheelZoom={true}
+                touchZoom={true}
+                dragging={true}
+                doubleClickZoom={true}
+                zoomControl={true}
+                whenReady={(map) => {
+                  // Ensure map is properly sized when ready (fixes mobile loading)
+                  const leafletMap = map.target
+                  
+                  // Log map container info for debugging
+                  const container = leafletMap.getContainer()
+                  const containerRect = container.getBoundingClientRect()
+                  const mapSize = leafletMap.getSize()
+                  
+                  console.log('Map whenReady - Container info:', {
+                    containerWidth: container.offsetWidth,
+                    containerHeight: container.offsetHeight,
+                    clientWidth: container.clientWidth,
+                    clientHeight: container.clientHeight,
+                    boundingRect: containerRect,
+                    mapSize: mapSize,
+                    center: leafletMap.getCenter(),
+                    zoom: leafletMap.getZoom(),
+                  })
+                  
+                  // Invalidate size multiple times for mobile
+                  setTimeout(() => {
+                    leafletMap.invalidateSize()
+                    console.log('Map ready and size invalidated (1st)')
+                    
+                    // Second invalidation for mobile
+                    setTimeout(() => {
+                      leafletMap.invalidateSize()
+                      const newSize = leafletMap.getSize()
+                      console.log('Map ready and size invalidated (2nd), new size:', newSize)
+                      
+                      // Force a view reset to ensure tiles load
+                      leafletMap.setView(leafletMap.getCenter(), leafletMap.getZoom(), { animate: false })
+                    }, 300)
+                  }, 200)
+                }}
               >
+                 {/* CartoDB Voyager basemap: Provides a colorful yet clean background that highlights data overlays, similar to the Myna: State of India's Birds design style */}
                  <TileLayer
-                   attribution=""
-                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                   url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                   subdomains="abcd"
+                   maxZoom={19}
+                   minZoom={4}
+                   errorTileUrl=""
+                   crossOrigin={true}
                  />
                 <StateZoomUpdater selectedState={selectedRegion} />
+                <MapEventHandler />
+                <MapResizeHandler />
+                
+                {/* World country borders */}
+                {worldBorders && (
+                  <GeoJSON
+                    key="world-borders"
+                    data={worldBorders}
+                    style={() => ({
+                      color: '#718096',
+                      weight: 1,
+                      opacity: 0.6,
+                      fillColor: 'transparent',
+                      fillOpacity: 0
+                    })}
+                  />
+                )}
+                
+                
+                {/* Story markers */}
                 {geoJSONData.features.length > 0 && (
                   <GeoJSON
                     data={geoJSONData}
@@ -482,12 +710,138 @@ function LeafletMapPage() {
                 )}
               </MapContainer>
             )}
+            
+            {/* Custom Tooltip - Same as India SVG Map */}
+            {tooltip && tooltip.story && (() => {
+              const containerHeight = mapContainerRef.current?.offsetHeight || 600
+              const tooltipHeight = 180 // Approximate tooltip height
+              const isNearBottom = tooltip.y > containerHeight - tooltipHeight - 50
+              const showAbove = isNearBottom
+              
+              return (
+              <div
+                className="absolute bg-white rounded-lg shadow-xl z-[1000] pointer-events-auto"
+                style={{
+                  left: `${Math.min(Math.max(tooltip.x, 160), mapContainerRef.current?.offsetWidth - 160 || 160)}px`,
+                  top: showAbove ? `${tooltip.y - tooltipHeight - 15}px` : `${tooltip.y + 15}px`,
+                  transform: 'translateX(-50%)',
+                  width: '320px',
+                  maxWidth: '90vw',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Tooltip pointer pointing to marker */}
+                <div
+                  className="absolute"
+                  style={{
+                    left: '50%',
+                    [showAbove ? 'bottom' : 'top']: '-8px',
+                    transform: 'translateX(-50%)',
+                    width: 0,
+                    height: 0,
+                    borderLeft: '8px solid transparent',
+                    borderRight: '8px solid transparent',
+                    [showAbove ? 'borderTop' : 'borderBottom']: '8px solid white',
+                    filter: `drop-shadow(0 ${showAbove ? '2px' : '-2px'} 2px rgba(0, 0, 0, 0.1))`,
+                  }}
+                />
+                <div className="flex">
+                  {/* Left Panel - Content */}
+                  <div className="flex-1 p-3 pr-2">
+                    {/* Title - Limited to 2 lines */}
+                    <h3 className="text-sm font-bold text-black mb-1.5 line-clamp-2">
+                      {tooltip.story.title}
+                    </h3>
+                    
+                    {/* Category - Under title */}
+                    {tooltip.story.category_name && (
+                      <div className="mb-2">
+                        <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-md">
+                          {tooltip.story.category_name}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Location with map pin icon */}
+                    {(tooltip.story.village_name || tooltip.story.panchayat_name || tooltip.story.block_name || tooltip.story.district_name || tooltip.story.state_name) && (
+                      <div className="flex items-center gap-1.5 mb-2 text-xs text-gray-700">
+                        <FaMapMarkerAlt className="text-xs text-gray-500 flex-shrink-0" />
+                        <span className="line-clamp-1">
+                          {[tooltip.story.village_name, tooltip.story.panchayat_name, tooltip.story.block_name, tooltip.story.district_name, tooltip.story.state_name].filter(Boolean).join(', ')}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Description/Content */}
+                    {tooltip.story.content && (
+                      <p className="text-xs text-gray-700 mb-2 line-clamp-2">
+                        {tooltip.story.content}
+                      </p>
+                    )}
+                    
+                    {/* Read more link */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const slug = tooltip.story.slug || generateSlug(tooltip.story.title)
+                        navigate(`/stories/${slug}`)
+                        setTooltip(null)
+                      }}
+                      className="text-xs text-gray-700 hover:text-gray-900 font-medium flex items-center gap-1"
+                    >
+                      Read more <span>&gt;</span>
+                    </button>
+                  </div>
+                  
+                  {/* Right Panel */}
+                  <div className="w-24 flex flex-col items-end p-3 pl-2">
+                    {/* Close button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setTooltip(null)
+                      }}
+                      className="text-gray-400 hover:text-gray-600 mb-2"
+                    >
+                      <FaTimes className="text-base" />
+                    </button>
+                    
+                    {/* Image placeholder */}
+                    <div className="w-full aspect-square bg-gray-200 rounded-md overflow-hidden relative">
+                      {tooltip.story.photo_url ? (
+                        <img
+                          src={tooltip.story.photo_url}
+                          alt={tooltip.story.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none'
+                            const placeholder = e.target.nextElementSibling
+                            if (placeholder) {
+                              placeholder.style.display = 'block'
+                            }
+                          }}
+                        />
+                      ) : null}
+                      <img
+                        src="/people/people1.png"
+                        alt="Placeholder"
+                        className="w-full h-full object-cover"
+                        style={{ 
+                          display: tooltip.story.photo_url ? 'none' : 'block'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              )
+            })()}
           </div>
         </div>
       </div>
         </div>
       </div>
-      
+      </main>
       <Footer />
     </div>
   )

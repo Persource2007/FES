@@ -40,6 +40,8 @@ class Story extends Model
         'panchayat_name',
         'village_id',
         'village_name',
+        'latitude',
+        'longitude',
         'description',
         'content',
         'status',

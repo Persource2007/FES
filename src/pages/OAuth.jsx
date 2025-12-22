@@ -57,7 +57,7 @@ function OAuth() {
     client_id: 'commonstories',
     redirect_uri: 'https://geet.observatory.org.in', // Must match exactly what's registered with OAuth server
     response_type: 'code',
-    scope: 'read',
+    scope: 'openid email profile',
     state: '',
     code_challenge: '',
     code_challenge_method: 'S256',
@@ -535,8 +535,9 @@ function OAuth() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white flex flex-col">
       <Header />
+      <main className="flex-1">
 
       {/* Hero Section */}
       <section className="bg-gradient-to-b from-slate-50 to-white py-16">
@@ -681,7 +682,7 @@ function OAuth() {
                       value={authParams.scope}
                       onChange={(e) => setAuthParams(prev => ({ ...prev, scope: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="openid profile email"
+                      placeholder="openid email profile"
                     />
                   </div>
                   <div>
@@ -994,7 +995,7 @@ function OAuth() {
           </div>
         </div>
       </section>
-
+      </main>
       <Footer />
     </div>
   )

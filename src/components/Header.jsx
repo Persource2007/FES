@@ -9,6 +9,7 @@ function Header() {
   const location = useLocation()
   const { showError, showWarning } = useError()
   const [showTranslateDropdown, setShowTranslateDropdown] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [oauthUser, setOAuthUser] = useState(null)
   const [isOAuthAuthenticated, setIsOAuthAuthenticated] = useState(false)
   const [showCodeModal, setShowCodeModal] = useState(false)
@@ -17,34 +18,104 @@ function Header() {
 
   // Check OAuth login status on mount and when location changes
   useEffect(() => {
-    const checkOAuthStatus = async () => {
+    let isMounted = true
+    let lastCheckTime = 0
+    const MIN_CHECK_INTERVAL = 5 * 60 * 1000 // 5 minutes minimum between checks
+    
+    const checkOAuthStatus = async (force = false) => {
+      // Throttle: Don't check if we've checked recently (unless forced)
+      const now = Date.now()
+      if (!force && (now - lastCheckTime) < MIN_CHECK_INTERVAL) {
+        return
+      }
+      lastCheckTime = now
+      
       try {
-        const loggedIn = await isOAuthLoggedIn()
-        setIsOAuthAuthenticated(loggedIn)
-        if (loggedIn) {
-          const user = getOAuthUser() || await getUserInfo()
-          setOAuthUser(user)
-        } else {
-          setOAuthUser(null)
+        // First check if we have user in localStorage
+        const storedUser = getOAuthUser()
+        
+        // If we have a stored user, use it (no need to call API)
+        if (storedUser) {
+          if (isMounted) {
+            setOAuthUser(storedUser)
+            setIsOAuthAuthenticated(true)
+          }
+          return
+        }
+        
+        // Only call API if we don't have stored user
+        // If no stored user but we have a session cookie, try to fetch user info
+        console.log('No oauth_user in localStorage, checking session...')
+        try {
+          const user = await getUserInfo()
+          if (isMounted && user) {
+            setOAuthUser(user)
+            setIsOAuthAuthenticated(true)
+          }
+        } catch (error) {
+          console.log('Failed to fetch user info:', error.message)
+          // If fetch fails, check if it's a 401 (session invalid)
+          if (isMounted) {
+            if (error.response?.status === 401) {
+              setIsOAuthAuthenticated(false)
+              setOAuthUser(null)
+            }
+          }
         }
       } catch (error) {
         // Session expired or not found
-        setIsOAuthAuthenticated(false)
-        setOAuthUser(null)
+        console.error('OAuth status check error:', error)
+        if (isMounted) {
+          setIsOAuthAuthenticated(false)
+          setOAuthUser(null)
+        }
       }
     }
     
-    checkOAuthStatus()
-    // Check periodically in case session expires (less frequent now - every 30 seconds)
-    const interval = setInterval(checkOAuthStatus, 30000)
-    return () => clearInterval(interval)
+    // Check on mount
+    checkOAuthStatus(true)
+    
+    // Check when tab becomes visible (user returns to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Only check if we don't have a stored user
+        if (!getOAuthUser()) {
+          checkOAuthStatus(true)
+        }
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // Periodic check only if no stored user (every 5 minutes instead of 30 seconds)
+    // This is a fallback for cases where localStorage might be cleared
+    const interval = setInterval(() => {
+      if (!getOAuthUser()) {
+        checkOAuthStatus(false)
+      }
+    }, 5 * 60 * 1000) // 5 minutes
+    
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [location])
 
   const handleOAuthLogin = async () => {
     try {
       setIsProcessing(true)
       
-      // First, check if there's an existing valid session
+      // First, check if we have a stored user (no API call needed)
+      const storedUser = getOAuthUser()
+      if (storedUser) {
+        setOAuthUser(storedUser)
+        setIsOAuthAuthenticated(true)
+        setIsProcessing(false)
+        return // Already have user info, no need to check session
+      }
+      
+      // Only check session if we don't have stored user
       // This handles cases where user has expired token but refresh token is still valid
       try {
         const loggedIn = await isOAuthLoggedIn()
@@ -305,7 +376,7 @@ function Header() {
               className="h-10 w-auto"
             />
           </Link>
-          <nav className="hidden md:flex items-center space-x-6">
+          <nav className="hidden lg:flex items-center space-x-6">
             <Link
               to="/stories"
               className={`font-medium transition-colors ${
@@ -324,7 +395,7 @@ function Header() {
                   : 'text-gray-700 hover:text-green-700'
               }`}
             >
-              Try Leaflet Map
+              Leaflet Map
             </Link>
             
             {/* Custom Language Selector */}
@@ -335,7 +406,7 @@ function Header() {
                 aria-label="Select Language"
               >
                 <FaGlobe className="text-lg" />
-                <span className="text-sm notranslate">Language</span>
+                <span className="notranslate">Language</span>
               </button>
               
               {showTranslateDropdown && (
@@ -409,7 +480,11 @@ function Header() {
           </nav>
 
           {/* Mobile menu button */}
-          <button className="md:hidden text-gray-700">
+          <button 
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            className="lg:hidden text-gray-700 p-2"
+            aria-label="Toggle mobile menu"
+          >
             <svg
               className="h-6 w-6"
               fill="none"
@@ -419,10 +494,131 @@ function Header() {
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path d="M4 6h16M4 12h16M4 18h16" />
+              {showMobileMenu ? (
+                <path d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              )}
             </svg>
           </button>
         </div>
+
+        {/* Mobile menu */}
+        {showMobileMenu && (
+          <div className="lg:hidden border-t border-gray-200 py-4">
+            <nav className="flex flex-col space-y-4">
+              <Link
+                to="/stories"
+                onClick={() => setShowMobileMenu(false)}
+                className={`px-4 py-2 font-medium transition-colors ${
+                  isActive('/stories')
+                    ? 'text-green-800 font-semibold border-l-4 border-green-700 bg-green-50'
+                    : 'text-gray-700 hover:text-green-700 hover:bg-gray-50'
+                }`}
+              >
+                Stories
+              </Link>
+              <Link
+                to="/leaflet-map"
+                onClick={() => setShowMobileMenu(false)}
+                className={`px-4 py-2 font-medium transition-colors ${
+                  isActive('/leaflet-map')
+                    ? 'text-green-800 font-semibold border-l-4 border-green-700 bg-green-50'
+                    : 'text-gray-700 hover:text-green-700 hover:bg-gray-50'
+                }`}
+              >
+                Leaflet Map
+              </Link>
+              
+              {/* Mobile Language Selector */}
+              <div className="relative notranslate">
+                <button
+                  onClick={() => setShowTranslateDropdown(!showTranslateDropdown)}
+                  className="flex items-center gap-2 w-full px-4 py-2 text-gray-700 hover:text-green-700 transition-colors font-medium hover:bg-gray-50"
+                  aria-label="Select Language"
+                >
+                  <FaGlobe className="text-lg" />
+                  <span className="notranslate">Language</span>
+                </button>
+                
+                {showTranslateDropdown && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowTranslateDropdown(false)}
+                    ></div>
+                    <div className="absolute left-0 right-0 mt-2 mx-4 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20 max-h-80 overflow-y-auto notranslate">
+                      {languages.map((lang) => (
+                        <button
+                          key={lang.code}
+                          onClick={() => changeLanguage(lang.code)}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors notranslate"
+                        >
+                          {lang.name}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <Link
+                to="/oauth"
+                onClick={() => setShowMobileMenu(false)}
+                className={`px-4 py-2 font-medium transition-colors ${
+                  isActive('/oauth')
+                    ? 'text-green-800 font-semibold border-l-4 border-green-700 bg-green-50'
+                    : 'text-gray-700 hover:text-green-700 hover:bg-gray-50'
+                }`}
+              >
+                OAuth
+              </Link>
+
+              {isOAuthAuthenticated && oauthUser ? (
+                <div className="px-4 py-2 space-y-3 border-t border-gray-200 pt-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      {oauthUser.name || oauthUser.email || 'User'}
+                    </p>
+                    {oauthUser.role && (
+                      <p className="text-xs text-gray-600">Role: {oauthUser.role.name || oauthUser.role_name}</p>
+                    )}
+                  </div>
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="flex items-center justify-center gap-2 bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors font-medium shadow-md hover:shadow-lg text-sm w-full"
+                  >
+                    <FaTachometerAlt className="text-sm" />
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false)
+                      handleOAuthLogout()
+                    }}
+                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium shadow-md hover:shadow-lg text-sm w-full"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <div className="px-4">
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false)
+                      handleOAuthLogin()
+                    }}
+                    disabled={isProcessing}
+                    className="bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition-colors font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                  >
+                    {isProcessing ? 'Processing...' : 'Login'}
+                  </button>
+                </div>
+              )}
+            </nav>
+          </div>
+        )}
       </div>
       
       <OAuthCodeModal
