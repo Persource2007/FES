@@ -56,5 +56,6 @@ backend/storage/framework/views/*
 !CHANGELOG.md
 !REFRESH_TOKEN_FLOW.md
 !ROLE_BASED_ACCESS_CONTROL.md
+!DATABASE_SCHEMA.md
 backend/*.md
 
