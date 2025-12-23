@@ -34,23 +34,6 @@
 | `created_at` | TIMESTAMP | | Account creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    users {
-        bigserial id PK
-        varchar name
-        varchar email UK
-        bigint role_id FK
-        bigint organization_id FK
-        bigint region_id FK
-        boolean is_active
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
 ---
 
 ## 2. roles
@@ -63,18 +46,6 @@ erDiagram
 | `role_name` | VARCHAR | UNIQUE, NOT NULL | Role name (e.g., "Writer", "Editor", "Super Admin") |
 | `created_at` | TIMESTAMP | | Role creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
-
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    roles {
-        bigserial id PK
-        varchar role_name UK
-        timestamp created_at
-        timestamp updated_at
-    }
-```
 
 ---
 
@@ -91,20 +62,6 @@ erDiagram
 | `created_at` | TIMESTAMP | | Permission creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    permissions {
-        bigserial id PK
-        varchar name
-        varchar slug UK
-        text description
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
 ---
 
 ## 4. role_permissions
@@ -118,19 +75,6 @@ erDiagram
 | `permission_id` | BIGINT | FOREIGN KEY → `permissions.id` | Permission ID |
 | `created_at` | TIMESTAMP | | Relationship creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
-
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    role_permissions {
-        bigserial id PK
-        bigint role_id FK
-        bigint permission_id FK
-        timestamp created_at
-        timestamp updated_at
-    }
-```
 
 ---
 
@@ -147,20 +91,6 @@ erDiagram
 | `created_at` | TIMESTAMP | | Region creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    regions {
-        bigserial id PK
-        varchar name UK
-        varchar code UK
-        boolean is_active
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
 ---
 
 ## 6. organizations
@@ -176,20 +106,6 @@ erDiagram
 | `created_at` | TIMESTAMP | | Organization creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    organizations {
-        bigserial id PK
-        varchar name
-        bigint region_id FK
-        boolean is_active
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
 ---
 
 ## 7. story_categories
@@ -204,20 +120,6 @@ erDiagram
 | `is_active` | BOOLEAN | DEFAULT true | Whether the category is active |
 | `created_at` | TIMESTAMP | | Category creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
-
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    story_categories {
-        bigserial id PK
-        varchar name
-        text description
-        boolean is_active
-        timestamp created_at
-        timestamp updated_at
-    }
-```
 
 ---
 
@@ -263,49 +165,6 @@ erDiagram
 | `created_at` | TIMESTAMP | | Story creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    stories {
-        bigserial id PK
-        bigint user_id FK
-        bigint category_id FK
-        varchar title
-        varchar slug UK
-        varchar subtitle
-        varchar photo_url
-        text quote
-        varchar person_name
-        varchar person_location
-        varchar facilitator_name
-        varchar facilitator_organization
-        varchar state_id
-        varchar state_name
-        varchar district_id
-        varchar district_name
-        varchar sub_district_id
-        varchar sub_district_name
-        varchar block_id
-        varchar block_name
-        varchar panchayat_id
-        varchar panchayat_name
-        varchar village_id
-        varchar village_name
-        decimal latitude
-        decimal longitude
-        text description
-        text content
-        varchar status
-        bigint approved_by FK
-        timestamp approved_at
-        timestamp published_at
-        text rejection_reason
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
 ---
 
 ## 9. sessions
@@ -322,21 +181,6 @@ erDiagram
 | `created_at` | TIMESTAMP | | Session creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    sessions {
-        varchar id PK
-        bigint user_id FK
-        text oauth_access_token
-        text oauth_refresh_token
-        timestamp expires_at
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
 ---
 
 ## 10. activities
@@ -352,20 +196,6 @@ erDiagram
 | `metadata` | JSONB | NULLABLE | Additional activity data in JSON format |
 | `created_at` | TIMESTAMP | | Activity timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    activities {
-        bigserial id PK
-        bigint user_id FK
-        varchar type
-        text message
-        jsonb metadata
-        timestamp created_at
-    }
-```
-
 ---
 
 ## 11. category_regions
@@ -379,19 +209,6 @@ erDiagram
 | `region_id` | BIGINT | FOREIGN KEY → `regions.id` | Region ID |
 | `created_at` | TIMESTAMP | | Relationship creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
-
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    category_regions {
-        bigserial id PK
-        bigint category_id FK
-        bigint region_id FK
-        timestamp created_at
-        timestamp updated_at
-    }
-```
 
 ---
 
@@ -407,19 +224,6 @@ erDiagram
 | `created_at` | TIMESTAMP | | Relationship creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
 
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    category_organizations {
-        bigserial id PK
-        bigint category_id FK
-        bigint organization_id FK
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
 ---
 
 ## 13. migrations
@@ -431,17 +235,6 @@ erDiagram
 | `id` | BIGSERIAL | PRIMARY KEY | Auto-incrementing migration ID |
 | `migration` | VARCHAR | NOT NULL | Migration file name |
 | `batch` | INTEGER | NOT NULL | Migration batch number |
-
-### Mermaid Diagram
-
-```mermaid
-erDiagram
-    migrations {
-        bigserial id PK
-        varchar migration
-        integer batch
-    }
-```
 
 ---
 
