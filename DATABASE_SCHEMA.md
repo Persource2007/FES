@@ -137,10 +137,8 @@
 | `subtitle` | VARCHAR | NULLABLE | Story subtitle |
 | `photo_url` | VARCHAR | NULLABLE | Photo URL for the person in the story |
 | `quote` | TEXT | NULLABLE | Quote from the person |
-| `person_name` | VARCHAR | NULLABLE | Name of the person in the story |
-| `person_location` | VARCHAR | NULLABLE | Location of the person |
-| `facilitator_name` | VARCHAR | NULLABLE | Facilitator's name |
-| `facilitator_organization` | VARCHAR | NULLABLE | Facilitator's organization |
+| `person` | JSONB | NULLABLE | Person information (can have multiple persons or none). Stores array of person objects with all person-related fields |
+| `facilitator` | JSONB | NULLABLE | Facilitator information (can have multiple facilitators or none). Stores array of facilitator objects with all facilitator-related fields |
 | `state_id` | VARCHAR | NULLABLE | State ID from Admin Hierarchy API |
 | `state_name` | VARCHAR | NULLABLE | State name |
 | `district_id` | VARCHAR | NULLABLE | District ID from Admin Hierarchy API |
@@ -162,8 +160,154 @@
 | `approved_at` | TIMESTAMP | NULLABLE | Approval timestamp |
 | `published_at` | TIMESTAMP | NULLABLE | Publication timestamp |
 | `rejection_reason` | TEXT | NULLABLE | Reason for rejection (if rejected) |
+| `additional_fields` | JSONB | NULLABLE | Additional dynamic fields supporting text, hyperlinks, and YouTube embedded URLs |
 | `created_at` | TIMESTAMP | | Story creation timestamp |
 | `updated_at` | TIMESTAMP | | Last update timestamp |
+
+### Person and Facilitator Fields (JSONB)
+
+The following columns use JSONB to support multiple entries with all related fields:
+
+- **`person`**: JSONB column storing array of person objects. Each person object contains all person-related fields (name, location, etc.). Can contain multiple persons or be empty/null.
+- **`facilitator`**: JSONB column storing array of facilitator objects. Each facilitator object contains all facilitator-related fields (name, organization, etc.). Can contain multiple facilitators or be empty/null.
+
+**Structure Example for Person Column:**
+```json
+[
+  {
+    "name": "John Smith",
+    "location": "Mumbai, Maharashtra",
+    "order": 1
+  },
+  {
+    "name": "Jane Doe",
+    "location": "Delhi, Delhi",
+    "order": 2
+  }
+]
+```
+
+**Structure Example for Facilitator Column:**
+```json
+[
+  {
+    "name": "Dr. Rajesh Kumar",
+    "organization": "FES Foundation",
+    "order": 1
+  },
+  {
+    "name": "Ms. Priya Sharma",
+    "organization": "Community Development Org",
+    "order": 2
+  }
+]
+```
+
+**Notes:**
+- Both columns are nullable - stories can have no persons or facilitators
+- Each array can contain multiple entries
+- Each person/facilitator object contains all related fields together (name, location/organization, etc.)
+- Each entry includes an order field (for display ordering)
+- Arrays can be empty `[]` or null
+- Additional fields can be added to person/facilitator objects as needed (e.g., email, phone, role, etc.)
+
+---
+
+### Additional Fields Column Details
+
+The `additional_fields` JSONB column stores dynamic field data with the following supported data types:
+
+- **text**: Plain text content
+- **hyperlinks**: URL links (e.g., `https://example.com`)
+- **youtube_embedded_url**: YouTube embedded URLs (e.g., `https://www.youtube.com/embed/VIDEO_ID`)
+
+**Structure Example:**
+```json
+{
+  "fields": [
+    {
+      "key": "person_1_name",
+      "type": "text",
+      "label": "Person Name",
+      "value": "John Smith",
+      "order": 1
+    },
+    {
+      "key": "person_1_location",
+      "type": "text",
+      "label": "Person Location",
+      "value": "Mumbai, Maharashtra",
+      "order": 2
+    },
+    {
+      "key": "person_2_name",
+      "type": "text",
+      "label": "Person Name",
+      "value": "Jane Doe",
+      "order": 3
+    },
+    {
+      "key": "person_2_location",
+      "type": "text",
+      "label": "Person Location",
+      "value": "Delhi, Delhi",
+      "order": 4
+    },
+    {
+      "key": "facilitator_1_name",
+      "type": "text",
+      "label": "Facilitator Name",
+      "value": "Dr. Rajesh Kumar",
+      "order": 5
+    },
+    {
+      "key": "facilitator_1_organization",
+      "type": "text",
+      "label": "Facilitator Organization",
+      "value": "FES Foundation",
+      "order": 6
+    },
+    {
+      "key": "facilitator_2_name",
+      "type": "text",
+      "label": "Facilitator Name",
+      "value": "Ms. Priya Sharma",
+      "order": 7
+    },
+    {
+      "key": "facilitator_2_organization",
+      "type": "text",
+      "label": "Facilitator Organization",
+      "value": "Community Development Org",
+      "order": 8
+    },
+    {
+      "key": "reference_link",
+      "type": "hyperlinks",
+      "label": "Reference Link",
+      "value": "https://example.com/reference",
+      "order": 9
+    },
+    {
+      "key": "video_demo",
+      "type": "youtube_embedded_url",
+      "label": "Video Demo",
+      "value": "https://www.youtube.com/embed/VIDEO_ID",
+      "order": 10
+    }
+  ]
+}
+```
+
+**Notes:**
+- Multiple entries of each data type can be stored in the same column
+- Each field entry includes: key (identifier), type (text/hyperlinks/youtube_embedded_url), label (display name), value (actual data), and order (display order)
+- The column is nullable - stories can exist without additional fields
+- **Person and Facilitator fields**: Previously static fields (`person_name`, `person_location`, `facilitator_name`, `facilitator_organization`) are now stored dynamically in `additional_fields`. This allows:
+  - Multiple persons per story (e.g., `person_1_name`, `person_2_name`, etc.)
+  - Multiple facilitators per story (e.g., `facilitator_1_name`, `facilitator_2_name`, etc.)
+  - Stories with no persons or facilitators (simply omit these fields)
+  - Flexible field naming and organization
 
 ---
 
